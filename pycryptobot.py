@@ -77,6 +77,8 @@ elif app.isLive() == 1:
             state.last_action = 'SELL'
             state.last_buy_price = 0.0
 
+        print (df)
+
 def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFrame()):
     """Trading bot job which runs at a scheduled interval"""
 
@@ -281,31 +283,31 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.last_buy_filled = state.last_buy_size / state.last_buy_price
                 state.last_buy_fee = round((state.last_buy_filled * state.last_buy_price) * 0.005, 2)
 
-            #print ('buy_size:', state.last_buy_size)
-            #print ('buy_filled:', state.last_buy_filled)
-            #print ('buy_price:', state.last_buy_price)
-            #print ('buy_fee:', state.last_buy_fee, "\n")
+            print ('buy_size:', state.last_buy_size)
+            print ('buy_filled:', state.last_buy_filled)
+            print ('buy_price:', state.last_buy_price)
+            print ('buy_fee:', state.last_buy_fee, "\n")
 
             sell_size = (app.getSellPercent() / 100) * (price * state.last_buy_filled)
             sell_fee = round(sell_size * app.getTakerFee(), 2)
             sell_filled = sell_size - sell_fee
 
-            #print ('sell_percent:', app.getSellPercent())
-            #print ('sell_size:', sell_size)
-            #print ('sell_price:', price)
-            #print ('sell_fee:', sell_fee)
-            #print ('sell_filled:', sell_filled, "\n")
+            print ('sell_percent:', app.getSellPercent())
+            print ('sell_size:', sell_size)
+            print ('sell_price:', price)
+            print ('sell_fee:', sell_fee)
+            print ('sell_filled:', sell_filled, "\n")
 
             buy_value = state.last_buy_size - state.last_buy_fee
             profit = sell_filled - buy_value
 
-            #print ('buy_value:', buy_value)
-            #print ('sell_filled:', sell_filled)
-            #print ('profit:', profit, "\n")
+            print ('buy_value:', buy_value)
+            print ('sell_filled:', sell_filled)
+            print ('profit:', profit, "\n")
 
             margin = (profit / state.last_buy_size) * 100
 
-            #print ('margin:', margin)
+            print ('margin:', margin)
 
             # loss failsafe sell at fibonacci band
             if app.disableFailsafeFibonacciLow() is False and app.allowSellAtLoss() and app.sellLowerPcnt() is None and state.fib_low > 0 and state.fib_low >= float(price):
