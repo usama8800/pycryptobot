@@ -299,10 +299,11 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
             print ('sell_filled:', sell_filled, "\n")
 
             buy_value = state.last_buy_size - state.last_buy_fee
-            profit = sell_filled - buy_value
+            sell_value = sell_filled - sell_fee
+            profit = (sell_value - buy_value)
 
             print ('buy_value:', buy_value)
-            print ('sell_filled:', sell_filled)
+            print ('sell_value:', sell_value)
             print ('profit:', profit, "\n")
 
             margin = (profit / state.last_buy_size) * 100
