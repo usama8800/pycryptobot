@@ -288,11 +288,9 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
             print ('buy_price:', state.last_buy_price)
             print ('buy_fee:', state.last_buy_fee, "\n")
 
-            sell_size = (app.getSellPercent() / 100) * (price * state.last_buy_filled)
+            sell_size = (app.getSellPercent() / 100) * (price * state.last_buy_size)
             sell_fee = round(sell_size * app.getTakerFee(), 2)
             sell_filled = sell_size - sell_fee
-
-            print ('DEBUG:', price * state.last_buy_filled, "\n")
 
             print ('sell_percent:', app.getSellPercent())
             print ('sell_size:', sell_size)
