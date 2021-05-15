@@ -6,9 +6,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 sys.path.append('.')
 # pylint: disable=import-error
-from models.Binance import AuthAPI, PublicAPI
+from models.exchange.binance import AuthAPI, PublicAPI
 
-VALID_ORDER_MARKET = 'DOGEBTC'
+# there is no dynamic way of retrieving a valid order market
+VALID_ORDER_MARKET = 'DOGEUSDT'
 
 def test_instantiate_authapi_without_error():
     api_key = "0000000000000000000000000000000000000000000000000000000000000000"
@@ -47,7 +48,7 @@ def test_instantiate_publicapi_without_error():
 
 def test_config_json_exists_and_valid():
     filename = 'config.json'
-    assert os.path.exists(filename) == True
+    assert os.path.exists(filename) is True
     with open(filename) as config_file:
         config = json.load(config_file)
 
@@ -64,38 +65,6 @@ def test_config_json_exists_and_valid():
             api_secret = config['binance']['api_secret']
             api_url = config['binance']['api_url']
             AuthAPI(api_key, api_secret, api_url)
-    pass
-
-def test_getAccounts():
-    filename = 'config.json'
-
-    with open(filename) as config_file:
-        config = json.load(config_file)
-
-        api_key = ''
-        api_secret = ''
-        api_url = ''
-        if 'api_key' in config and 'api_secret' in config and 'api_pass' in config and 'api_url' in config:
-            api_key = config['api_key']
-            api_secret = config['api_secret']
-            api_url = config['api_url']
-            AuthAPI(api_key, api_secret, api_url)
-        elif 'api_key' in config['binance'] and 'api_secret' in config['binance'] and 'api_url' in config['binance']:
-            api_key = config['binance']['api_key']
-            api_secret = config['binance']['api_secret']
-            api_url = config['binance']['api_url']
-            AuthAPI(api_key, api_secret, api_url)
-
-    exchange = AuthAPI(api_key, api_secret, api_url)
-    assert type(exchange) is AuthAPI
-
-    df = exchange.getAccounts()
-    assert type(df) is pandas.core.frame.DataFrame
-
-    actual = df.columns.to_list()
-    expected = [ 'index', 'id', 'currency', 'balance', 'hold', 'available', 'profile_id', 'trading_enabled' ]
-    assert len(actual) == len(expected)
-    assert all([a == b for a, b in zip(actual, expected)])
 
 def test_getAccount():
     filename = 'config.json'
@@ -120,20 +89,11 @@ def test_getAccount():
     exchange = AuthAPI(api_key, api_secret, api_url)
     assert type(exchange) is AuthAPI
 
-    df = exchange.getAccounts()
-
-    account = df.head(1)['id'].values[0]
-    assert account >= 0
-
-    df = exchange.getAccount(account)
+    df = exchange.getAccount()
     assert type(df) is pandas.core.frame.DataFrame
 
-    assert len(df) == 1
-
-    df.drop(['index'], axis=1, inplace=True)
-
     actual = df.columns.to_list()
-    expected = [ 'id', 'currency', 'balance', 'hold', 'available', 'profile_id', 'trading_enabled' ]
+    expected = ['currency', 'balance', 'hold', 'available']
     assert len(actual) == len(expected)
     assert all([a == b for a, b in zip(actual, expected)])
 
@@ -343,7 +303,6 @@ def test_getOrders():
     assert len(actual) == len(expected)
     assert all([a == b for a, b in zip(actual, expected)])
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersInvalidMarket():
     filename = 'config.json'
 
@@ -369,9 +328,8 @@ def test_getOrdersInvalidMarket():
 
     with pytest.raises(ValueError) as execinfo:
         exchange.getOrders(market='ERROR')
-    assert str(execinfo.value) == 'Coinbase Pro market is invalid.'
+    assert str(execinfo.value) == 'Binance market is invalid.'
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersValidMarket():
     filename = 'config.json'
 
@@ -404,7 +362,6 @@ def test_getOrdersValidMarket():
     assert len(actual) == len(expected)
     assert all([a == b for a, b in zip(actual, expected)])
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersInvalidAction():
     filename = 'config.json'
 
@@ -432,7 +389,6 @@ def test_getOrdersInvalidAction():
         exchange.getOrders(action='ERROR')
     assert str(execinfo.value) == 'Invalid order action.'
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersValidActionBuy():
     filename = 'config.json'
 
@@ -456,16 +412,15 @@ def test_getOrdersValidActionBuy():
     exchange = AuthAPI(api_key, api_secret, api_url)
     assert type(exchange) is AuthAPI
 
-    df = exchange.getOrders(action='buy')
+    df = exchange.getOrders(market=VALID_ORDER_MARKET, action='buy')
 
     assert len(df) >= 0
 
     actual = df.columns.to_list()
-    expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'fees', 'price', 'status' ]
+    expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'status', 'price' ]
     assert len(actual) == len(expected)
     assert all([a == b for a, b in zip(actual, expected)])
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersValidActionSell():
     filename = 'config.json'
 
@@ -489,16 +444,15 @@ def test_getOrdersValidActionSell():
     exchange = AuthAPI(api_key, api_secret, api_url)
     assert type(exchange) is AuthAPI
 
-    df = exchange.getOrders(action='sell')
+    df = exchange.getOrders(market=VALID_ORDER_MARKET, action='sell')
 
     assert len(df) >= 0
 
     actual = df.columns.to_list()
-    expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'fees', 'price', 'status' ]
+    expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'status', 'price' ]
     assert len(actual) == len(expected)
     assert all([a == b for a, b in zip(actual, expected)])
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersInvalidStatus():
     filename = 'config.json'
 
@@ -526,7 +480,6 @@ def test_getOrdersInvalidStatus():
         exchange.getOrders(status='ERROR')
     assert str(execinfo.value) == 'Invalid order status.'
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersValidStatusAll():
     filename = 'config.json'
 
@@ -550,17 +503,16 @@ def test_getOrdersValidStatusAll():
     exchange = AuthAPI(api_key, api_secret, api_url)
     assert type(exchange) is AuthAPI
 
-    df = exchange.getOrders(status='all')
+    df = exchange.getOrders(market=VALID_ORDER_MARKET, status='all')
 
     if len(df) == 0:
         pass
     else:
         actual = df.columns.to_list()
-        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'fees', 'price', 'status' ]
+        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'status', 'price' ]
         assert len(actual) == len(expected)
         assert all([a == b for a, b in zip(actual, expected)])
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersValidStatusOpen():
     filename = 'config.json'
 
@@ -584,17 +536,16 @@ def test_getOrdersValidStatusOpen():
     exchange = AuthAPI(api_key, api_secret, api_url)
     assert type(exchange) is AuthAPI
 
-    df = exchange.getOrders(status='open')
+    df = exchange.getOrders(market=VALID_ORDER_MARKET, status='open')
 
     if len(df) == 0:
         pass
     else:
         actual = df.columns.to_list()
-        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'value', 'status', 'price' ]
+        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'status', 'price' ]
         assert len(actual) == len(expected)
         assert all([a == b for a, b in zip(actual, expected)])
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersValidStatusPending():
     filename = 'config.json'
 
@@ -618,17 +569,16 @@ def test_getOrdersValidStatusPending():
     exchange = AuthAPI(api_key, api_secret, api_url)
     assert type(exchange) is AuthAPI
 
-    df = exchange.getOrders(status='pending')
+    df = exchange.getOrders(market=VALID_ORDER_MARKET, status='pending')
 
     if len(df) == 0:
         pass
     else:
         actual = df.columns.to_list()
-        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'value', 'status', 'price' ]
+        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'status', 'price' ]
         assert len(actual) == len(expected)
         assert all([a == b for a, b in zip(actual, expected)])
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersValidStatusDone():
     filename = 'config.json'
 
@@ -652,17 +602,16 @@ def test_getOrdersValidStatusDone():
     exchange = AuthAPI(api_key, api_secret, api_url)
     assert type(exchange) is AuthAPI
 
-    df = exchange.getOrders(status='done')
+    df = exchange.getOrders(market=VALID_ORDER_MARKET, status='done')
 
     if len(df) == 0:
         pass
     else:
         actual = df.columns.to_list()
-        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'fees', 'price', 'status' ]
+        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'status', 'price' ]
         assert len(actual) == len(expected)
         assert all([a == b for a, b in zip(actual, expected)])
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getOrdersValidStatusActive():
     filename = 'config.json'
 
@@ -686,17 +635,16 @@ def test_getOrdersValidStatusActive():
     exchange = AuthAPI(api_key, api_secret, api_url)
     assert type(exchange) is AuthAPI
 
-    df = exchange.getOrders(status='active')
+    df = exchange.getOrders(market=VALID_ORDER_MARKET, status='active')
 
     if len(df) == 0:
         pass
     else:
         actual = df.columns.to_list()
-        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'value', 'status', 'price' ]
+        expected = [ 'created_at', 'market', 'action', 'type', 'size', 'filled', 'status', 'price' ]
         assert len(actual) == len(expected)
         assert all([a == b for a, b in zip(actual, expected)])
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_getTime():
     filename = 'config.json'
 
@@ -723,7 +671,6 @@ def test_getTime():
     resp = exchange.getTime()
     assert type(resp) is datetime
 
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
 def test_marketBuyInvalidMarket():
     filename = 'config.json'
 
@@ -749,32 +696,4 @@ def test_marketBuyInvalidMarket():
 
     with pytest.raises(ValueError) as execinfo:
         exchange.marketBuy('ERROR', -1)
-    assert str(execinfo.value) == 'Coinbase Pro market is invalid.'  
-
-@pytest.mark.skip(reason="TODO: convert Coinbase Pro test for Binance")
-def test_marketBuyInvalidAmount():
-    filename = 'config.json'
-
-    with open(filename) as config_file:
-        config = json.load(config_file)
-
-        api_key = ''
-        api_secret = ''
-        api_url = ''
-        if 'api_key' in config and 'api_secret' in config and 'api_pass' in config and 'api_url' in config:
-            api_key = config['api_key']
-            api_secret = config['api_secret']
-            api_url = config['api_url']
-            AuthAPI(api_key, api_secret, api_url)
-        elif 'api_key' in config['binance'] and 'api_secret' in config['binance'] and 'api_url' in config['binance']:
-            api_key = config['binance']['api_key']
-            api_secret = config['binance']['api_secret']
-            api_url = config['binance']['api_url']
-            AuthAPI(api_key, api_secret, api_url)
-
-    exchange = AuthAPI(api_key, api_secret, api_url)
-    assert type(exchange) is AuthAPI
-
-    with pytest.raises(ValueError) as execinfo:
-        exchange.marketBuy('XXX-YYY', 0)
-    assert str(execinfo.value) == 'Trade amount is too small (>= 10).'  
+    assert str(execinfo.value) == 'Binance market is invalid.'
