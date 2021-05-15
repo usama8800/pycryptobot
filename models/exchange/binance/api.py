@@ -4,6 +4,7 @@ import re
 import numpy as np
 import pandas as pd
 from binance.client import Client
+from datetime import datetime
 
 # Constants
 
