@@ -1,0 +1,24 @@
+{
+    "binance": {
+        "api_url": "https://api.binance.com",
+        "api_key": "",
+        "api_secret": "",
+        "config": {
+            "base_currency": "SAMPLE",
+            "quote_currency": "USDT",
+            "granularity": "1m",
+            "buypercent": 50,
+            "live": true,
+            "-autorestart": true,
+            "disabletelegram": false,
+            "graphs": true,
+            "-sim": "fast-sample",
+            "-simstartdate": "2021-04-06",
+            "verbose": true
+        }
+    },
+    "telegram": {
+        "token": "",
+        "client_id": ""
+    }
+}

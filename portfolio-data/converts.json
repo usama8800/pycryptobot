@@ -1,0 +1,149 @@
+[
+    {
+        "From Symbol": "BTC",
+        "To Symbol": "ETH",
+        "Time": "21-Apr-2021 20:34:01",
+        "From Amount": 0.0005,
+        "To Amount": 0.01096982
+    },
+    {
+        "From Symbol": "BTC",
+        "To Symbol": "BNB",
+        "Time": "27-Apr-2021 18:35:39",
+        "From Amount": 0.00106298,
+        "To Amount": 0.09972699
+    },
+    {
+        "From Symbol": "ETH",
+        "To Symbol": "USDT",
+        "Time": "27-Apr-2021 18:37:26",
+        "From Amount": 0.01096982,
+        "To Amount": 27.9122682
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "BTC",
+        "Time": "03-May-2021 12:24:51",
+        "From Amount": 850.0,
+        "To Amount": 0.01463524
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "ETH",
+        "Time": "03-May-2021 12:25:15",
+        "From Amount": 900.0,
+        "To Amount": 0.28731871
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "BTC",
+        "Time": "04-May-2021 13:39:07",
+        "From Amount": 150.0,
+        "To Amount": 0.0026864
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "BTC",
+        "Time": "04-May-2021 23:44:29",
+        "From Amount": 150.0,
+        "To Amount": 0.00274091
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "DOGE",
+        "Time": "05-May-2021 13:44:14",
+        "From Amount": 250.0,
+        "To Amount": 379.93978714
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "DOGE",
+        "Time": "05-May-2021 22:32:24",
+        "From Amount": 150.0,
+        "To Amount": 234.34863578
+    },
+    {
+        "From Symbol": "DOGE",
+        "To Symbol": "USDT",
+        "Time": "08-May-2021 21:13:14",
+        "From Amount": 614.28842292,
+        "To Amount": 406.04956186
+    },
+    {
+        "From Symbol": "BTC",
+        "To Symbol": "USDT",
+        "Time": "08-May-2021 23:19:09",
+        "From Amount": 0.02006254,
+        "To Amount": 1181.74780613
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "BUSD",
+        "Time": "09-May-2021 16:10:11",
+        "From Amount": 600.0,
+        "To Amount": 599.79007347
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "BUSD",
+        "Time": "09-May-2021 19:07:47",
+        "From Amount": 400.0,
+        "To Amount": 399.97200196
+    },
+    {
+        "From Symbol": "BUSD",
+        "To Symbol": "USDT",
+        "Time": "09-May-2021 19:08:25",
+        "From Amount": 449.76207543,
+        "To Amount": 449.15534639
+    },
+    {
+        "From Symbol": "BUSD",
+        "To Symbol": "USDT",
+        "Time": "09-May-2021 19:08:44",
+        "From Amount": 550.0,
+        "To Amount": 549.25805
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "DOGE",
+        "Time": "09-May-2021 19:10:48",
+        "From Amount": 100.0,
+        "To Amount": 199.15042429
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "XRP",
+        "Time": "09-May-2021 19:48:51",
+        "From Amount": 150.0,
+        "To Amount": 98.7908006
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "BTC",
+        "Time": "09-May-2021 19:51:51",
+        "From Amount": 300.0,
+        "To Amount": 0.00522787
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "ADA",
+        "Time": "09-May-2021 19:58:21",
+        "From Amount": 181.289,
+        "To Amount": 100.0
+    },
+    {
+        "From Symbol": "USDT",
+        "To Symbol": "DOGE",
+        "Time": "10-May-2021 03:46:31",
+        "From Amount": 400.0,
+        "To Amount": 652.89919889
+    },
+    {
+        "From Symbol": "BTC",
+        "To Symbol": "USDT",
+        "Time": "10-May-2021 21:25:22",
+        "From Amount": 0.00522788,
+        "To Amount": 303.26147698
+    }
+]

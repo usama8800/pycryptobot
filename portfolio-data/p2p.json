@@ -1,0 +1,50 @@
+[
+    {
+        "Symbol": "BTC",
+        "Time": "21-Apr-2021 8:11 PM",
+        "Bought At": 63980.28,
+        "USD In": 100.0
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "24-Apr-2021 2:58 AM",
+        "Bought At": 1.047,
+        "USD In": 60.0
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "24-Apr-2021 3:08 AM",
+        "Bought At": 1.044,
+        "USD In": 200.0
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "24-Apr-2021 3:52 AM",
+        "Bought At": 1.032,
+        "USD In": 500.0
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "24-Apr-2021 4:04 AM",
+        "Bought At": 1.031,
+        "USD In": 350.0
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "02-May-2021 2:53 AM",
+        "Bought At": 1.007,
+        "USD In": 468.0
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "02-May-2021 4:40 AM",
+        "Bought At": 1.014,
+        "USD In": 544.67
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "02-May-2021 4:57 AM",
+        "Bought At": 1.014,
+        "USD In": 500.0
+    }
+]

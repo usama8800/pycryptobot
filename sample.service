@@ -1,0 +1,13 @@
+[Unit]
+Description=Sample Trader
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/pycryptobot/
+ExecStart=nice -n 19 /usr/bin/python3.9 -u pycryptobot.py --config sample.config.json
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target
