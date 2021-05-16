@@ -19,9 +19,9 @@ fi
 
 path=$(pwd)
 cd /etc/systemd/system
-sudo cp "$path/sample.service" "$lower.service"
-sudo sed -i -e "s/Sample/$upper/g" -e "s/sample/$lower/g" "$lower.service"
+sudo cp "$path/sample.service" "$lower.crypto.service"
+sudo sed -i -e "s/Sample/$upper/g" -e "s/sample/$lower/g" "$lower.crypto.service"
 
 systemctl daemon-reload
-systemctl start "$lower.service"
-systemctl enable "$lower.service"
+systemctl start "$lower.crypto.service"
+systemctl enable "$lower.crypto.service"
