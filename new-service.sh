@@ -11,6 +11,9 @@ lower=$(echo "$1" | sed -e 's/\(.*\)/\L\1/')
 cp sample.config.json "$lower.config.json"
 sed -i -e "s/SAMPLE/$upper/g" "$lower.config.json"
 
+sed -i -e "s/systemctl restart {}/systemctl restart {$lower}/" restart-all.sh
+sed -i -e "s/systemctl restart {\([^}]\)/systemctl restart {$lower,\1/" restart-all.sh
+
 $path=$(pwd)
 cd /etc/systemd/system
 sudo cp "$path/sample.service" "$lower.service"
