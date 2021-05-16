@@ -8,6 +8,7 @@
             "quote_currency": "USDT",
             "granularity": "1m",
             "buypercent": 50,
+            "sellatloss": false,
             "live": true,
             "-autorestart": true,
             "disabletelegram": false,
