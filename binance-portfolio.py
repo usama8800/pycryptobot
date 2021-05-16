@@ -9,6 +9,11 @@ from pandas.core.frame import DataFrame
 
 from models.PyCryptoBot import PyCryptoBot
 
+pd.set_option(
+    "display.float_format",
+    lambda x: ("%.0f" if int(x) == x else "%0.0f" if abs(x) < 0.0001 else "%.4f")
+    % (-x if -0.0001 <= x < 0 else x),
+)
 app = PyCryptoBot()
 client = Client(app.getAPIKey(), app.getAPISecret(), {"verify": False, "timeout": 20})
 cache = mezmorize.Cache(
@@ -198,8 +203,8 @@ def main():
 
     portfolio.loc["Lost"]["USD In"] = 196.2
     portfolio["USD Out"] = portfolio.apply(calculateUSD, axis=1)
-    portfolio["Calculated Profit"] = portfolio.apply(calculateProfit, axis=1)
-    portfolio = portfolio.sort_values("Calculated Profit", ascending=False)
+    portfolio["Profit"] = portfolio.apply(calculateProfit, axis=1)
+    portfolio = portfolio.sort_values("Profit", ascending=False)
     sums = portfolio.sum(0)
     fullPrint(portfolio)
     print()
@@ -210,7 +215,7 @@ def main():
         sums["USD Out"]  # What I get
         - p2p.sum(0)["USD In"]  # What I put in (through P2P)
         + portfolio.loc["USDT"][
-            "Calculated Profit"
+            "Profit"
         ]  # What I lost in P2P due to higher rates. Value is negative so adding
         + portfolio.loc["Withdraws"]["USD In"],
     )
