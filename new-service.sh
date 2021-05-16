@@ -8,8 +8,8 @@ fi
 upper=$(echo "$1" | sed -e 's/\(.*\)/\U\1/')
 lower=$(echo "$1" | sed -e 's/\(.*\)/\L\1/')
 
-# cp sample.config.json "$lower.config.json"
-# sed -i -e "s/SAMPLE/$upper/g" "$lower.config.json"
+cp sample.config.json "$lower.config.json"
+sed -i -e "s/SAMPLE/$upper/g" "$lower.config.json"
 
 if grep {} restart-all.sh 1>/dev/null; then
     sed -i -e "s/systemctl restart {}/systemctl restart {$lower}/" restart-all.sh
