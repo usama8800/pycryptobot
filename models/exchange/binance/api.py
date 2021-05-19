@@ -4,7 +4,7 @@ import re
 import numpy as np
 import pandas as pd
 from binance.client import Client
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Constants
 
@@ -22,7 +22,6 @@ class AuthAPIBase():
         if p.match(market):
             return True
         return False
-
 
 class AuthAPI(AuthAPIBase):
     def __init__(self, api_key: str='', api_secret: str='', api_url: str='https://api.binance.com') -> None:
@@ -56,7 +55,7 @@ class AuthAPI(AuthAPIBase):
         p = re.compile(r"^[A-z0-9]{64,64}$")
         if not p.match(api_key):
             self.handle_init_error('Binance API key is invalid')
-
+ 
         # validates the api secret is syntactically correct
         p = re.compile(r"^[A-z0-9]{64,64}$")
         if not p.match(api_secret):
@@ -131,7 +130,7 @@ class AuthAPI(AuthAPIBase):
 
     def getTakerFee(self, market: str='') -> float:
         if market == '':
-            fees = self.getFees()
+            return DEFAULT_TAKER_FEE_RATE
         else:
             fees = self.getFees(market)
 
@@ -139,10 +138,7 @@ class AuthAPI(AuthAPIBase):
             print (f"error: 'taker_fee_rate' not in fees (using {DEFAULT_TAKER_FEE_RATE} as a fallback)")
             return DEFAULT_TAKER_FEE_RATE
 
-        if market == '':
-            return fees
-        else:
-            return float(fees['taker_fee_rate'].to_string(index=False).strip())
+        return float(fees['taker_fee_rate'].to_string(index=False).strip())
 
     def __convertStatus(self, val: str) -> str:
         if val == 'filled':
@@ -290,7 +286,7 @@ class AuthAPI(AuthAPIBase):
             else:
                 if 'taker' not in resp['tradeFee'][0]:
                     print ('*** getTradeFee(' + market + ') - missing "trader" ***')
-                    print (resp)
+                    print (resp)                    
 
         if resp['success']:
             return resp['tradeFee'][0]['taker']
@@ -368,10 +364,10 @@ class PublicAPI(AuthAPIBase):
         # if only a start date is provided
         if iso8601start != '' and iso8601end == '':
             try:
-                multiplier = MULTIPLIER_EQUIVALENTS[SUPPORTED_GRANULARITY.index(granularity)]
+                multiplier = MULTIPLIER_EQUIVALENTS[SUPPORTED_GRANULARITY.index(granularity)] 
             except:
                 multiplier = 1
-
+    
             # calculate the end date using the granularity
             iso8601end = str((datetime.strptime(iso8601start, '%Y-%m-%dT%H:%M:%S.%f') +
                              timedelta(minutes=granularity * multiplier)).isoformat())
@@ -417,8 +413,7 @@ class PublicAPI(AuthAPIBase):
         # binance epoch is too long
         df['open_time'] = df['open_time'] + 1
         df['open_time'] = df['open_time'].astype(str)
-        df['open_time'] = df['open_time'].str.replace(
-            r'\d{3}$', '', regex=True)
+        df['open_time'] = df['open_time'].str.replace(r'\d{3}$', '', regex=True)   
 
         try:
             freq = FREQUENCY_EQUIVALENTS[SUPPORTED_GRANULARITY.index(granularity)]

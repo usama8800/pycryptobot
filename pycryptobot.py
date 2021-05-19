@@ -15,6 +15,7 @@ from models.AppState import AppState
 from models.PyCryptoBot import PyCryptoBot
 from models.Trading import TechnicalAnalysis
 from models.TradingAccount import TradingAccount
+from models.helper.MarginHelper import calculate_margin
 from views.TradingGraphs import TradingGraphs
 
 # production: disable traceback
@@ -59,7 +60,10 @@ elif app.isLive() == 1:
             state.last_buy_size = float(df[df.action == 'buy']['size'])
             state.last_buy_filled = float(df[df.action == 'buy']['filled'])
             state.last_buy_price = float(df[df.action == 'buy']['price'])
-            state.last_buy_fee = round(state.last_buy_filled * state.last_buy_price * app.getTakerFee(), 2)
+            if app.getExchange() == 'binance':
+                state.last_buy_fee = state.last_buy_filled * app.getTakerFee()
+            else:
+                state.last_buy_fee = state.last_buy_price * state.last_buy_filled * app.getTakerFee()
         else:
             state.last_action = 'SELL'
             state.last_buy_price = 0.0
@@ -81,45 +85,6 @@ elif app.isLive() == 1:
             raise Exception('Insufficient available funds to place buy order: ' + str(account.getBalance(app.getQuoteCurrency())) + ' < 50 ' + app.getQuoteCurrency() + "\nNote: A manual limit order places a hold on available funds.")
         elif state.last_action == 'BUY' and account.getBalance(app.getBaseCurrency()) < 0.001:
             raise Exception('Insufficient available funds to place sell order: ' + str(account.getBalance(app.getBaseCurrency())) + ' < 0.1 ' + app.getBaseCurrency() + "\nNote: A manual limit order places a hold on available funds.")
-
-
-def calculateMargin(buy_size: float=0.0, buy_filled: int=0.0, buy_price: int=0.0, buy_fee: float=0.0, sell_percent: float=100, sell_price: float=0.0, sell_fee: float=0.0, sell_taker_fee: float=0.0, debug: bool=False) -> float:
-    if debug is True:
-        print (f'buy_size: {buy_size}')
-        print (f'buy_filled: {buy_filled}')
-        print (f'buy_price: {buy_price}')
-        print (f'buy_fee: {buy_fee}', "\n")
-
-    sell_size = (sell_percent / 100) * ((sell_price / buy_price) * buy_size)
-
-    if sell_fee == 0.0 and sell_taker_fee > 0.0:
-        sell_fee = sell_size * sell_taker_fee
-
-    if debug is True:
-        print (f'sell_size: {sell_size}')
-        print (f'sell_price: {sell_price}')
-        print (f'sell_fee: {sell_fee}', "\n")
-
-    if app.getExchange() == 'coinbasepro' :
-        buy_value = buy_size + buy_fee
-        sell_value = sell_size - sell_fee
-        profit = sell_value - buy_value
-    else :
-        buy_value = buy_price + buy_fee
-        sell_value = sell_price - sell_fee
-        profit = sell_value - buy_value
-
-    if debug is True:
-        print (f'buy_value: {buy_value}')
-        print (f'sell_value: {sell_value}')
-        print (f'profit: {profit}', "\n")
-
-    margin = (profit / buy_value) * 100
-
-    if debug is True:
-        print (f'margin: {margin}', "\n")
-
-    return margin, profit, sell_fee
 
 def getAction(now: datetime=datetime.today().strftime('%Y-%m-%d %H:%M:%S'), app: PyCryptoBot=None, price: float=0, df: pd.DataFrame=pd.DataFrame(), df_last: pd.DataFrame=pd.DataFrame(), last_action: str='WAIT', debug: bool=False) -> str:
     ema12gtema26co = bool(df_last['ema12gtema26co'].values[0])
@@ -162,7 +127,7 @@ def getAction(now: datetime=datetime.today().strftime('%Y-%m-%d %H:%M:%S'), app:
             logging.warning(log_text)
 
         return 'BUY'
-
+    
     elif ema12gtema26 is True \
             and macdgtsignalco is True \
             and (goldencross is True or app.disableBullOnly()) \
@@ -386,17 +351,25 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
             #  buy and sell calculations
             if app.isLive() == 0 and state.last_buy_filled == 0:
                 state.last_buy_filled = state.last_buy_size / state.last_buy_price
-                state.last_buy_fee = round(state.last_buy_size  * app.getTakerFee(), 2)
+                state.last_buy_fee = round(state.last_buy_size  * app.getTakerFee(), 8)
 
-            margin, profit, sell_fee = calculateMargin(
-                buy_size=state.last_buy_size,
-                buy_filled=state.last_buy_filled,
-                buy_price=state.last_buy_price,
+            if app.getExchange() == 'coinbasepro' and state.last_buy_filled == 0:
+                state.last_buy_filled = round(((state.last_buy_size - state.last_buy_fee) / state.last_buy_price), 8)
+                state.last_buy_fee = round(state.last_buy_size * app.getTakerFee(), 8)
+            elif app.getExchange() == 'binance' and state.last_buy_filled == 0:
+                state.last_buy_filled = round(state.last_buy_size * state.last_buy_price, 8)
+                state.last_buy_fee = round(state.last_buy_filled * app.getTakerFee(), 8)
+
+            margin, profit, sell_fee = calculate_margin(
+                buy_size=state.last_buy_size, 
+                buy_filled=state.last_buy_filled, 
+                buy_price=state.last_buy_price, 
                 buy_fee=state.last_buy_fee,
-                sell_percent=app.getSellPercent(),
-                sell_price=price,
-                sell_taker_fee=app.getTakerFee(),
-                debug=False)
+                sell_percent=app.getSellPercent(), 
+                sell_price=price, 
+                sell_taker_fee=app.getTakerFee(), 
+                debug=False,
+                exchange=app.getExchange())
 
             # loss failsafe sell at fibonacci band
             if app.disableFailsafeFibonacciLow() is False and app.allowSellAtLoss() and app.sellLowerPcnt() is None and state.fib_low > 0 and state.fib_low >= float(price):
@@ -835,7 +808,6 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                     # display balances
                     print (app.getBaseCurrency(), 'balance after order:', account.getBalance(app.getBaseCurrency()))
                     print (app.getQuoteCurrency(), 'balance after order:', account.getBalance(app.getQuoteCurrency()))
-
                 # if not live
                 else:
                      # TODO: calculate buy amount from dummy account
@@ -939,15 +911,16 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 # if not live
                 else:
                     if app.isVerbose() == 0:
-                        margin, profit, sell_fee = calculateMargin(
-                            buy_size=state.last_buy_size,
-                            buy_filled=state.last_buy_filled,
-                            buy_price=state.last_buy_price,
-                            buy_fee=state.last_buy_fee,
-                            sell_percent=app.getSellPercent(),
-                            sell_price=price,
-                            sell_taker_fee=app.getTakerFee(),
-                            debug=False)
+                        margin, profit, sell_fee = calculate_margin(
+                            buy_size=state.last_buy_size, 
+                            buy_filled=state.last_buy_filled, 
+                            buy_price=state.last_buy_price, 
+                            buy_fee=state.last_buy_fee, 
+                            sell_percent=app.getSellPercent(), 
+                            sell_price=price, 
+                            sell_taker_fee=app.getTakerFee(), 
+                            debug=False,
+                            exchange=app.getExchange())
 
                         if price > 0:
                             margin_text = str(app.truncate(margin, 2)) + '%'
@@ -1034,13 +1007,19 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
 def main():
     try:
         # initialise logging
-        logging.basicConfig(filename=app.getLogFile(), format='%(asctime)s - %(levelname)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', filemode='a', level=logging.DEBUG)
-
+        logging.basicConfig(
+            filename=app.getLogFile(),
+            format='%(asctime)s - %(levelname)s: %(message)s',
+            datefmt='%m/%d/%Y %I:%M:%S %p',
+            filemode='a',
+            level=logging.DEBUG,
+            force=True
+        )
         telegram = None
 
         if not app.disableTelegram() and app.isTelegramEnabled():
             telegram = app.getChatClient()
-
+        
         # telegram
         if telegram:
             if app.getExchange() == 'coinbasepro':

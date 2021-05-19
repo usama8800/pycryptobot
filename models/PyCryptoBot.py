@@ -1,3 +1,4 @@
+import pandas as pd
 import argparse
 import json
 import logging
@@ -5,21 +6,15 @@ import math
 import random
 import re
 import sys
-from datetime import datetime, timedelta
-
-import pandas as pd
 import urllib3
+from datetime import datetime, timedelta
 from urllib3.exceptions import ReadTimeoutError
-
-from models.chat import Telegram
-from models.config import (binanceConfigParser, binanceParseMarket,
-                           coinbaseProConfigParser, coinbaseProParseMarket)
-from models.exchange.binance import AuthAPI as BAuthAPI
-from models.exchange.binance import PublicAPI as BPublicAPI
-from models.exchange.coinbase_pro import AuthAPI as CBAuthAPI
-from models.exchange.coinbase_pro import PublicAPI as CBPublicAPI
-from models.Github import Github
 from models.Trading import TechnicalAnalysis
+from models.exchange.binance import AuthAPI as BAuthAPI, PublicAPI as BPublicAPI
+from models.exchange.coinbase_pro import AuthAPI as CBAuthAPI, PublicAPI as CBPublicAPI
+from models.Github import Github
+from models.chat import Telegram
+from models.config import binanceConfigParser, binanceParseMarket, coinbaseProConfigParser, coinbaseProParseMarket
 
 # disable insecure ssl warning
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -495,8 +490,7 @@ class PyCryptoBot():
             return api.getTakerFee()
         elif self.exchange == 'binance':
             api = BAuthAPI(self.getAPIKey(), self.getAPISecret(), self.getAPIURL())
-            #return api.getTakerFee()
-            return 0.005
+            return api.getTakerFee(self.getMarket())
         else:
             return 0.005
 
