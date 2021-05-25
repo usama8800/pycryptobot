@@ -55,7 +55,7 @@ class AuthAPI(AuthAPIBase):
         p = re.compile(r"^[A-z0-9]{64,64}$")
         if not p.match(api_key):
             self.handle_init_error('Binance API key is invalid')
- 
+
         # validates the api secret is syntactically correct
         p = re.compile(r"^[A-z0-9]{64,64}$")
         if not p.match(api_secret):
@@ -174,10 +174,8 @@ class AuthAPI(AuthAPIBase):
         if len(df) == 0:
             return pd.DataFrame()
 
-        df = df[['time', 'symbol', 'side', 'type',
-                 'executedQty', 'cummulativeQuoteQty', 'status']]
-        df.columns = ['created_at', 'market', 'action',
-                      'type', 'size', 'filled', 'status']
+        df = df[[ 'time', 'symbol', 'side', 'type', 'executedQty', 'cummulativeQuoteQty', 'status' ]]
+        df.columns = [ 'created_at', 'market', 'action', 'type', 'filled', 'size', 'status' ]
         df['created_at'] = df['created_at'].apply(lambda x: int(str(x)[:10]))
         df['created_at'] = df['created_at'].astype("datetime64[s]")
         df['size'] = df['size'].astype(float)
@@ -185,7 +183,7 @@ class AuthAPI(AuthAPIBase):
         df['action'] = df['action'].str.lower()
         df['type'] = df['type'].str.lower()
         df['status'] = df['status'].str.lower()
-        df['price'] = df['filled'] / df['size']
+        df['price'] = df['size'] / df['filled']
 
         # pylint: disable=unused-variable
         for k, v in df.items():
@@ -286,7 +284,7 @@ class AuthAPI(AuthAPIBase):
             else:
                 if 'taker' not in resp['tradeFee'][0]:
                     print ('*** getTradeFee(' + market + ') - missing "trader" ***')
-                    print (resp)                    
+                    print (resp)
 
         if resp['success']:
             return resp['tradeFee'][0]['taker']
@@ -364,10 +362,10 @@ class PublicAPI(AuthAPIBase):
         # if only a start date is provided
         if iso8601start != '' and iso8601end == '':
             try:
-                multiplier = MULTIPLIER_EQUIVALENTS[SUPPORTED_GRANULARITY.index(granularity)] 
+                multiplier = MULTIPLIER_EQUIVALENTS[SUPPORTED_GRANULARITY.index(granularity)]
             except:
                 multiplier = 1
-    
+
             # calculate the end date using the granularity
             iso8601end = str((datetime.strptime(iso8601start, '%Y-%m-%dT%H:%M:%S.%f') +
                              timedelta(minutes=granularity * multiplier)).isoformat())
@@ -413,7 +411,7 @@ class PublicAPI(AuthAPIBase):
         # binance epoch is too long
         df['open_time'] = df['open_time'] + 1
         df['open_time'] = df['open_time'].astype(str)
-        df['open_time'] = df['open_time'].str.replace(r'\d{3}$', '', regex=True)   
+        df['open_time'] = df['open_time'].str.replace(r'\d{3}$', '', regex=True)
 
         try:
             freq = FREQUENCY_EQUIVALENTS[SUPPORTED_GRANULARITY.index(granularity)]

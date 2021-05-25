@@ -2,15 +2,12 @@
 
 import logging
 import os
-import random
 import sched
 import sys
 import time
-from datetime import datetime, timedelta
-
-import numpy as np
 import pandas as pd
-
+from datetime import datetime
+from models.PyCryptoBot import PyCryptoBot
 from models.AppState import AppState
 from models.PyCryptoBot import PyCryptoBot
 from models.Trading import TechnicalAnalysis
@@ -19,7 +16,7 @@ from models.helper.MarginHelper import calculate_margin
 from views.TradingGraphs import TradingGraphs
 
 # production: disable traceback
-#sys.tracebacklimit = 0
+# sys.tracebacklimit = 0
 
 app = PyCryptoBot()
 state = AppState()
@@ -44,10 +41,11 @@ if app.getLastAction() != None:
             state.last_buy_fee = float(df[df.action == 'buy']['fees'])
 
 # if live trading is enabled
-elif app.isLive() == 1:
+elif app.isLive():
     # connectivity check
     if app.getTime() is None:
-        raise ConnectionError('Unable to start the bot as your connection to the exchange is down. Please check your Internet connectivity!')
+        raise ConnectionError(
+            'Unable to start the bot as your connection to the exchange is down. Please check your Internet connectivity!')
 
     account = TradingAccount(app)
 
@@ -60,10 +58,7 @@ elif app.isLive() == 1:
             state.last_buy_size = float(df[df.action == 'buy']['size'])
             state.last_buy_filled = float(df[df.action == 'buy']['filled'])
             state.last_buy_price = float(df[df.action == 'buy']['price'])
-            if app.getExchange() == 'binance':
-                state.last_buy_fee = state.last_buy_filled * app.getTakerFee()
-            else:
-                state.last_buy_fee = state.last_buy_price * state.last_buy_filled * app.getTakerFee()
+            state.last_buy_fee = state.last_buy_size * app.getTakerFee()
         else:
             state.last_action = 'SELL'
             state.last_buy_price = 0.0
@@ -76,17 +71,24 @@ elif app.isLive() == 1:
 
     if app.getExchange() == 'binance':
         if state.last_action == 'SELL' and account.getBalance(app.getQuoteCurrency()) < 0.001:
-            raise Exception('Insufficient available funds to place buy order: ' + str(account.getBalance(app.getQuoteCurrency())) + ' < 0.1 ' + app.getQuoteCurrency() + "\nNote: A manual limit order places a hold on available funds.")
+            raise Exception('Insufficient available funds to place buy order: ' + str(account.getBalance(
+                app.getQuoteCurrency())) + ' < 0.1 ' + app.getQuoteCurrency() + "\nNote: A manual limit order places a hold on available funds.")
         elif state.last_action == 'BUY' and account.getBalance(app.getBaseCurrency()) < 0.001:
-            raise Exception('Insufficient available funds to place sell order: ' + str(account.getBalance(app.getBaseCurrency())) + ' < 0.1 ' + app.getBaseCurrency() + "\nNote: A manual limit order places a hold on available funds.")
+            raise Exception('Insufficient available funds to place sell order: ' + str(account.getBalance(
+                app.getBaseCurrency())) + ' < 0.1 ' + app.getBaseCurrency() + "\nNote: A manual limit order places a hold on available funds.")
 
     elif app.getExchange() == 'coinbasepro':
         if state.last_action == 'SELL' and account.getBalance(app.getQuoteCurrency()) < 50:
-            raise Exception('Insufficient available funds to place buy order: ' + str(account.getBalance(app.getQuoteCurrency())) + ' < 50 ' + app.getQuoteCurrency() + "\nNote: A manual limit order places a hold on available funds.")
+            raise Exception('Insufficient available funds to place buy order: ' + str(account.getBalance(
+                app.getQuoteCurrency())) + ' < 50 ' + app.getQuoteCurrency() + "\nNote: A manual limit order places a hold on available funds.")
         elif state.last_action == 'BUY' and account.getBalance(app.getBaseCurrency()) < 0.001:
-            raise Exception('Insufficient available funds to place sell order: ' + str(account.getBalance(app.getBaseCurrency())) + ' < 0.1 ' + app.getBaseCurrency() + "\nNote: A manual limit order places a hold on available funds.")
+            raise Exception('Insufficient available funds to place sell order: ' + str(account.getBalance(
+                app.getBaseCurrency())) + ' < 0.1 ' + app.getBaseCurrency() + "\nNote: A manual limit order places a hold on available funds.")
 
-def getAction(now: datetime=datetime.today().strftime('%Y-%m-%d %H:%M:%S'), app: PyCryptoBot=None, price: float=0, df: pd.DataFrame=pd.DataFrame(), df_last: pd.DataFrame=pd.DataFrame(), last_action: str='WAIT', debug: bool=False) -> str:
+
+def getAction(now: datetime = datetime.today().strftime('%Y-%m-%d %H:%M:%S'), app: PyCryptoBot = None, price: float = 0,
+              df: pd.DataFrame = pd.DataFrame(), df_last: pd.DataFrame = pd.DataFrame(), last_action: str = 'WAIT',
+              debug: bool = False) -> str:
     ema12gtema26co = bool(df_last['ema12gtema26co'].values[0])
     macdgtsignal = bool(df_last['macdgtsignal'].values[0])
     goldencross = bool(df_last['goldencross'].values[0])
@@ -106,28 +108,30 @@ def getAction(now: datetime=datetime.today().strftime('%Y-%m-%d %H:%M:%S'), app:
             and last_action != 'BUY':
 
         if debug is True:
-            print ('*** Buy Signal ***')
-            print (f'ema12gtema26co: {ema12gtema26co}')
+            print('*** Buy Signal ***')
+            print(f'ema12gtema26co: {ema12gtema26co}')
             if not app.disableBuyMACD():
-                print (f'macdgtsignal: {macdgtsignal}')
+                print(f'macdgtsignal: {macdgtsignal}')
             if not app.disableBullOnly():
-                print (f'goldencross: {goldencross}')
+                print(f'goldencross: {goldencross}')
             if not app.disableBuyOBV():
-                print (f'obv_pc: {obv_pc} > -5')
+                print(f'obv_pc: {obv_pc} > -5')
             if not app.disableBuyElderRay():
-                print (f'elder_ray_buy: {elder_ray_buy}')
-            print (f'last_action: {last_action}')
+                print(f'elder_ray_buy: {elder_ray_buy}')
+            print(f'last_action: {last_action}')
 
         # if disabled, do not buy within 3% of the dataframe close high
         if app.disableBuyNearHigh() is True and (price > (df['close'].max() * 0.97)):
             state.action = 'WAIT'
 
-            log_text = now + ' | ' + app.getMarket() + ' | ' + str(app.getGranularity()) + ' | Ignoring Buy Signal (price ' + str(price) + ' within 3% of high ' + str(df['close'].max()) + ')'
-            print (log_text, "\n")
+            log_text = str(now) + ' | ' + app.getMarket() + ' | ' + \
+                app.printGranularity() + ' | Ignoring Buy Signal (price ' + str(price) + ' within 3% of high ' + str(
+                df['close'].max()) + ')'
+            print(log_text, "\n")
             logging.warning(log_text)
 
         return 'BUY'
-    
+
     elif ema12gtema26 is True \
             and macdgtsignalco is True \
             and (goldencross is True or app.disableBullOnly()) \
@@ -136,23 +140,25 @@ def getAction(now: datetime=datetime.today().strftime('%Y-%m-%d %H:%M:%S'), app:
             and last_action != 'BUY':
 
         if debug is True:
-            print ('*** Buy Signal ***')
-            print (f'ema12gtema26: {ema12gtema26}')
-            print (f'macdgtsignalco: {macdgtsignalco}')
+            print('*** Buy Signal ***')
+            print(f'ema12gtema26: {ema12gtema26}')
+            print(f'macdgtsignalco: {macdgtsignalco}')
             if not app.disableBullOnly():
-                print (f'goldencross: {goldencross}')
+                print(f'goldencross: {goldencross}')
             if not app.disableBuyOBV():
-                print (f'obv_pc: {obv_pc} > -5')
+                print(f'obv_pc: {obv_pc} > -5')
             if not app.disableBuyElderRay():
-                print (f'elder_ray_buy: {elder_ray_buy}')
-            print (f'last_action: {last_action}')
+                print(f'elder_ray_buy: {elder_ray_buy}')
+            print(f'last_action: {last_action}')
 
         # if disabled, do not buy within 3% of the dataframe close high
         if app.disableBuyNearHigh() is True and (price > (df['close'].max() * 0.97)):
             state.action = 'WAIT'
 
-            log_text = now + ' | ' + app.getMarket() + ' | ' + str(app.getGranularity()) + ' | Ignoring Buy Signal (price ' + str(price) + ' within 3% of high ' + str(df['close'].max()) + ')'
-            print (log_text, "\n")
+            log_text = str(now) + ' | ' + app.getMarket() + ' | ' + \
+                app.printGranularity() + ' | Ignoring Buy Signal (price ' + str(price) + ' within 3% of high ' + str(
+                df['close'].max()) + ')'
+            print(log_text, "\n")
             logging.warning(log_text)
 
         return 'BUY'
@@ -163,22 +169,23 @@ def getAction(now: datetime=datetime.today().strftime('%Y-%m-%d %H:%M:%S'), app:
             and last_action not in ['', 'SELL']:
 
         if debug is True:
-            print ('*** Sell Signal ***')
-            print (f'ema12ltema26co: {ema12ltema26co}')
-            print (f'macdltsignal: {macdltsignal}')
-            print (f'last_action: {last_action}')
+            print('*** Sell Signal ***')
+            print(f'ema12ltema26co: {ema12ltema26co}')
+            print(f'macdltsignal: {macdltsignal}')
+            print(f'last_action: {last_action}')
 
         return 'SELL'
 
     return 'WAIT'
 
-def getInterval(df: pd.DataFrame=pd.DataFrame(), app: PyCryptoBot=None, iterations: int=0) -> pd.DataFrame:
+
+def getInterval(df: pd.DataFrame = pd.DataFrame(), app: PyCryptoBot = None, iterations: int = 0) -> pd.DataFrame:
     if len(df) == 0:
         return df
 
-    if app.isSimulation() == 1 and iterations > 0:
+    if app.isSimulation() and iterations > 0:
         # with a simulation iterate through data
-        return df.iloc[iterations-1:iterations]
+        return df.iloc[iterations - 1:iterations]
     else:
         # most recent entry
         return df.tail(1)
@@ -188,7 +195,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
 
     # connectivity check (only when running live)
     if app.isLive() and app.getTime() is None:
-        print ('Your connection to the exchange has gone down, will retry in 1 minute!')
+        print('Your connection to the exchange has gone down, will retry in 1 minute!')
 
         # poll every 5 minute
         list(map(s.cancel, s.queue))
@@ -198,7 +205,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
     # increment state.iterations
     state.iterations = state.iterations + 1
 
-    if app.isSimulation() == 0:
+    if not app.isSimulation():
         # retrieve the app.getMarket() data
         trading_data = app.getHistoricalData(app.getMarket(), app.getGranularity())
     else:
@@ -211,7 +218,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
     ta.addAll()
     df = ta.getDataFrame()
 
-    if app.isSimulation() == 1:
+    if app.isSimulation():
         df_last = getInterval(df, app, state.iterations)
     else:
         df_last = getInterval(df, app)
@@ -221,20 +228,8 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
     else:
         current_df_index = state.last_df_index
 
-    if app.getSmartSwitch() == 1 and app.getExchange() == 'binance' and app.getGranularity() == '1h' and app.is1hEMA1226Bull() is True and app.is6hEMA1226Bull() is True:
-        print ("*** smart switch from granularity '1h' (1 hour) to '15m' (15 min) ***")
-
-        # telegram
-        if not app.disableTelegram() and app.isTelegramEnabled():
-            telegram = app.getChatClient()
-            telegram.send(app.getMarket() + " smart switch from granularity '1h' (1 hour) to '15m' (15 min)")
-
-        app.setGranularity('15m')
-        list(map(s.cancel, s.queue))
-        s.enter(5, 1, executeJob, (sc, app, state))
-
-    elif app.getSmartSwitch() == 1 and app.getExchange() == 'coinbasepro' and app.getGranularity() == 3600 and app.is1hEMA1226Bull() is True and app.is6hEMA1226Bull() is True:
-        print ('*** smart switch from granularity 3600 (1 hour) to 900 (15 min) ***')
+    if app.getSmartSwitch() == 1 and app.getGranularity() == 3600 and app.is1hEMA1226Bull() is True and app.is6hEMA1226Bull() is True:
+        print('*** smart switch from granularity 3600 (1 hour) to 900 (15 min) ***')
 
         # telegram
         if not app.disableTelegram() and app.isTelegramEnabled():
@@ -245,20 +240,8 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
         list(map(s.cancel, s.queue))
         s.enter(5, 1, executeJob, (sc, app, state))
 
-    if app.getSmartSwitch() == 1 and app.getExchange() == 'binance' and app.getGranularity() == '15m' and app.is1hEMA1226Bull() is False and app.is6hEMA1226Bull() is False:
-        print ("*** smart switch from granularity '15m' (15 min) to '1h' (1 hour) ***")
-
-        # telegram
-        if not app.disableTelegram() and app.isTelegramEnabled():
-            telegram = app.getChatClient()
-            telegram.send(app.getMarket() + " smart switch from granularity '15m' (15 min) to '1h' (1 hour)")
-
-        app.setGranularity('1h')
-        list(map(s.cancel, s.queue))
-        s.enter(5, 1, executeJob, (sc, app, state))
-
-    elif app.getSmartSwitch() == 1 and app.getExchange() == 'coinbasepro' and app.getGranularity() == 900 and app.is1hEMA1226Bull() is False and app.is6hEMA1226Bull() is False:
-        print ("*** smart switch from granularity 900 (15 min) to 3600 (1 hour) ***")
+    if app.getSmartSwitch() == 1 and app.getGranularity() == 900 and app.is1hEMA1226Bull() is False and app.is6hEMA1226Bull() is False:
+        print("*** smart switch from granularity 900 (15 min) to 3600 (1 hour) ***")
 
         # telegram
         if not app.disableTelegram() and app.isTelegramEnabled():
@@ -269,7 +252,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
         list(map(s.cancel, s.queue))
         s.enter(5, 1, executeJob, (sc, app, state))
 
-    if app.getExchange() == 'binance' and str(app.getGranularity()) == '1d':
+    if app.getExchange() == 'binance' and app.getGranularity() == 86400:
         if len(df) < 250:
             # data frame should have 250 rows, if not retry
             print('error: data frame length is < 250 (' + str(len(df)) + ')')
@@ -278,7 +261,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
             s.enter(300, 1, executeJob, (sc, app, state))
     else:
         if len(df) < 300:
-            if app.isSimulation() == 0:
+            if not app.isSimulation():
                 # data frame should have 300 rows, if not retry
                 print('error: data frame length is < 300 (' + str(len(df)) + ')')
                 logging.error('error: data frame length is < 300 (' + str(len(df)) + ')')
@@ -288,7 +271,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
     if len(df_last) > 0:
         now = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
-        if app.isSimulation() == 0:
+        if not app.isSimulation():
             ticker = app.getTicker(app.getMarket())
             now = ticker[0]
             price = ticker[1]
@@ -316,7 +299,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
         elder_ray_sell = bool(df_last['eri_sell'].values[0])
 
         # if simulation interations < 200 set goldencross to true
-        if app.isSimulation() == 1 and state.iterations < 200:
+        if app.isSimulation() and state.iterations < 200:
             goldencross = True
 
         # candlestick detection
@@ -343,47 +326,41 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
             if price > state.last_buy_high:
                 state.last_buy_high = price
 
-            if  state.last_buy_high > 1:
+            if state.last_buy_high > 1:
                 change_pcnt_high = ((price / state.last_buy_high) - 1) * 100
             else:
                 change_pcnt_high = 0
 
             #  buy and sell calculations
-            if app.isLive() == 0 and state.last_buy_filled == 0:
-                state.last_buy_filled = state.last_buy_size / state.last_buy_price
-                state.last_buy_fee = round(state.last_buy_size  * app.getTakerFee(), 8)
 
-            if app.getExchange() == 'coinbasepro' and state.last_buy_filled == 0:
+            if  state.last_buy_filled == 0:
                 state.last_buy_filled = round(((state.last_buy_size - state.last_buy_fee) / state.last_buy_price), 8)
                 state.last_buy_fee = round(state.last_buy_size * app.getTakerFee(), 8)
-            elif app.getExchange() == 'binance' and state.last_buy_filled == 0:
-                state.last_buy_filled = round(state.last_buy_size * state.last_buy_price, 8)
-                state.last_buy_fee = round(state.last_buy_filled * app.getTakerFee(), 8)
 
             margin, profit, sell_fee = calculate_margin(
-                buy_size=state.last_buy_size, 
-                buy_filled=state.last_buy_filled, 
-                buy_price=state.last_buy_price, 
+                buy_size=state.last_buy_size,
+                buy_filled=state.last_buy_filled,
+                buy_price=state.last_buy_price,
                 buy_fee=state.last_buy_fee,
-                sell_percent=app.getSellPercent(), 
-                sell_price=price, 
-                sell_taker_fee=app.getTakerFee(), 
-                debug=False,
-                exchange=app.getExchange())
+                sell_percent=app.getSellPercent(),
+                sell_price=price,
+                sell_taker_fee=app.getTakerFee(),
+                debug=False)
 
             # loss failsafe sell at fibonacci band
-            if app.disableFailsafeFibonacciLow() is False and app.allowSellAtLoss() and app.sellLowerPcnt() is None and state.fib_low > 0 and state.fib_low >= float(price):
+            if app.disableFailsafeFibonacciLow() is False and app.allowSellAtLoss() and app.sellLowerPcnt() is None and state.fib_low > 0 and state.fib_low >= float(
+                    price):
                 state.action = 'SELL'
                 state.last_action = 'BUY'
                 immediate_action = True
                 log_text = '! Loss Failsafe Triggered (Fibonacci Band: ' + str(state.fib_low) + ')'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.warning(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             # loss failsafe sell at trailing_stop_loss
             if app.allowSellAtLoss() and app.trailingStopLoss() != None and change_pcnt_high < app.trailingStopLoss():
@@ -391,13 +368,13 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.last_action = 'BUY'
                 immediate_action = True
                 log_text = '! Trailing Stop Loss Triggered (< ' + str(app.trailingStopLoss()) + '%)'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.warning(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             # loss failsafe sell at sell_lower_pcnt
             elif app.disableFailsafeLowerPcnt() is False and app.allowSellAtLoss() and app.sellLowerPcnt() != None and margin < app.sellLowerPcnt():
@@ -405,13 +382,13 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.last_action = 'BUY'
                 immediate_action = True
                 log_text = '! Loss Failsafe Triggered (< ' + str(app.sellLowerPcnt()) + '%)'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.warning(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             # profit bank at sell_upper_pcnt
             if app.disableProfitbankUpperPcnt() is False and app.sellUpperPcnt() != None and margin > app.sellUpperPcnt():
@@ -419,13 +396,13 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.last_action = 'BUY'
                 immediate_action = True
                 log_text = '! Profit Bank Triggered (> ' + str(app.sellUpperPcnt()) + '%)'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.warning(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             # profit bank when strong reversal detected
             if app.disableProfitbankReversal() is False and margin > 3 and obv_pc < 0 and macdltsignal is True:
@@ -433,13 +410,13 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.last_action = 'BUY'
                 immediate_action = True
                 log_text = '! Profit Bank Triggered (Strong Reversal Detected)'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.warning(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             # configuration specifies to not sell at a loss
             if state.action == 'SELL' and not app.allowSellAtLoss() and margin <= 0:
@@ -447,7 +424,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.last_action = 'BUY'
                 immediate_action = False
                 log_text = '! Ignore Sell Signal (No Sell At Loss)'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.warning(log_text)
 
             # profit bank when strong reversal detected
@@ -456,13 +433,14 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.last_action = 'BUY'
                 immediate_action = True
                 log_text = '! Profit Bank Triggered (Selling At Resistance)'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.warning(log_text)
 
                 # telegram
-                if not app.disableTelegram() and app.isTelegramEnabled() and not (not app.allowSellAtLoss() and margin <= 0):
+                if not app.disableTelegram() and app.isTelegramEnabled() and not (
+                        not app.allowSellAtLoss() and margin <= 0):
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
         bullbeartext = ''
         if app.disableBullOnly() is True or (df_last['sma50'].values[0] == df_last['sma200'].values[0]):
@@ -474,7 +452,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
 
         # polling is every 5 minutes (even for hourly intervals), but only process once per interval
         if (immediate_action is True or state.last_df_index != current_df_index):
-            precision = 2
+            precision = 4
 
             if (price < 0.01):
                 precision = 8
@@ -488,7 +466,8 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
 
             obv_text = ''
             if app.disableBuyOBV() is False:
-                obv_text = 'OBV: ' + str(app.truncate(df_last['obv'].values[0], 4)) + ' (' + str(app.truncate(df_last['obv_pc'].values[0], 2)) + '%)'
+                obv_text = 'OBV: ' + str(app.truncate(df_last['obv'].values[0], precision)) + ' (' + str(
+                    app.truncate(df_last['obv_pc'].values[0], precision)) + '%)'
 
             state.eri_text = ''
             if app.disableBuyElderRay() is False:
@@ -501,113 +480,113 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
 
             if hammer is True:
                 log_text = '* Candlestick Detected: Hammer ("Weak - Reversal - Bullish Signal - Up")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
             if shooting_star is True:
                 log_text = '* Candlestick Detected: Shooting Star ("Weak - Reversal - Bearish Pattern - Down")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
             if hanging_man is True:
                 log_text = '* Candlestick Detected: Hanging Man ("Weak - Continuation - Bearish Pattern - Down")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
             if inverted_hammer is True:
                 log_text = '* Candlestick Detected: Inverted Hammer ("Weak - Continuation - Bullish Pattern - Up")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
             if three_white_soldiers is True:
                 log_text = '*** Candlestick Detected: Three White Soldiers ("Strong - Reversal - Bullish Pattern - Up")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             if three_black_crows is True:
                 log_text = '* Candlestick Detected: Three Black Crows ("Strong - Reversal - Bearish Pattern - Down")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             if morning_star is True:
                 log_text = '*** Candlestick Detected: Morning Star ("Strong - Reversal - Bullish Pattern - Up")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             if evening_star is True:
                 log_text = '*** Candlestick Detected: Evening Star ("Strong - Reversal - Bearish Pattern - Down")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             if three_line_strike is True:
                 log_text = '** Candlestick Detected: Three Line Strike ("Reliable - Reversal - Bullish Pattern - Up")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             if abandoned_baby is True:
                 log_text = '** Candlestick Detected: Abandoned Baby ("Reliable - Reversal - Bullish Pattern - Up")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             if morning_doji_star is True:
                 log_text = '** Candlestick Detected: Morning Doji Star ("Reliable - Reversal - Bullish Pattern - Up")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             if evening_doji_star is True:
                 log_text = '** Candlestick Detected: Evening Doji Star ("Reliable - Reversal - Bearish Pattern - Down")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             if two_black_gapping is True:
                 log_text = '*** Candlestick Detected: Two Black Gapping ("Reliable - Reversal - Bearish Pattern - Down")'
-                print (log_text, "\n")
+                print(log_text, "\n")
                 logging.debug(log_text)
 
                 # telegram
                 if not app.disableTelegram() and app.isTelegramEnabled():
                     telegram = app.getChatClient()
-                    telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') ' + log_text)
+                    telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             ema_co_prefix = ''
             ema_co_suffix = ''
@@ -650,34 +629,41 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                     obv_prefix = 'v '
                     obv_suffix = ' v | '
 
-            if app.isVerbose() == 0:
+            if not app.isVerbose():
                 if state.last_action != '':
-                    output_text = current_df_index + ' | ' + app.getMarket() + bullbeartext + ' | ' + str(app.getGranularity()) + ' | ' + price_text + ' | ' + ema_co_prefix + ema_text + ema_co_suffix + ' | ' + macd_co_prefix + macd_text + macd_co_suffix + obv_prefix + obv_text + obv_suffix + state.eri_text + state.action + ' | Last Action: ' + state.last_action
+                    output_text = current_df_index + ' | ' + app.getMarket() + bullbeartext + ' | ' + \
+                                  app.printGranularity() + ' | ' + price_text + ' | ' + ema_co_prefix + \
+                                  ema_text + ema_co_suffix + ' | ' + macd_co_prefix + macd_text + macd_co_suffix + \
+                                  obv_prefix + obv_text + obv_suffix + state.eri_text + state.action + \
+                                  ' | Last Action: ' + state.last_action
                 else:
-                    output_text = current_df_index + ' | ' + app.getMarket() + bullbeartext + ' | ' + str(app.getGranularity()) + ' | ' + price_text + ' | ' + ema_co_prefix + ema_text + ema_co_suffix + ' | ' + macd_co_prefix + macd_text + macd_co_suffix + obv_prefix + obv_text + obv_suffix + state.eri_text + state.action + ' '
+                    output_text = current_df_index + ' | ' + app.getMarket() + bullbeartext + ' | ' + \
+                                  app.printGranularity() + ' | ' + price_text + ' | ' + ema_co_prefix + ema_text + \
+                                  ema_co_suffix + ' | ' + macd_co_prefix + macd_text + macd_co_suffix + obv_prefix + \
+                                  obv_text + obv_suffix + state.eri_text + state.action + ' '
 
                 if state.last_action == 'BUY':
                     if state.last_buy_size > 0:
-                        margin_text = str(app.truncate(margin, 2)) + '%'
+                        margin_text = str(app.truncate(margin, precision)) + '%'
                     else:
                         margin_text = '0%'
 
-                    output_text += ' | ' +  margin_text + ' (delta: ' + str(round(price - state.last_buy_price, 2)) + ')'
+                    output_text += ' | ' + margin_text + ' (delta: ' + str(round(price - state.last_buy_price, precision)) + ')'
 
                 logging.debug(output_text)
-                print (output_text)
+                print(output_text)
 
                 if state.last_action == 'BUY':
                     # display support, resistance and fibonacci levels
                     logging.debug(output_text)
-                    print (ta.printSupportResistanceFibonacciLevels(price))
+                    print(ta.printSupportResistanceFibonacciLevels(price))
 
             else:
                 logging.debug('-- Iteration: ' + str(state.iterations) + ' --' + bullbeartext)
 
                 if state.last_action == 'BUY':
                     if state.last_buy_size > 0:
-                        margin_text = str(app.truncate(margin, 2)) + '%'
+                        margin_text = str(app.truncate(margin, precision)) + '%'
                     else:
                         margin_text = '0%'
 
@@ -782,45 +768,51 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.buy_sum = state.buy_sum + price_incl_fees
 
                 # if live
-                if app.isLive() == 1:
+                if app.isLive():
                     # telegram
                     if not app.disableTelegram() and app.isTelegramEnabled():
                         telegram = app.getChatClient()
-                        telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') BUY at ' + price_text)
+                        telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') BUY at ' + price_text)
 
-                    if app.isVerbose() == 0:
-                        logging.info(current_df_index + ' | ' + app.getMarket() + ' ' + str(app.getGranularity()) + ' | ' + price_text + ' | BUY')
-                        print ("\n", current_df_index, '|', app.getMarket(), str(app.getGranularity()), '|', price_text, '| BUY', "\n")
+                    if not app.isVerbose():
+                        logging.info(current_df_index + ' | ' + app.getMarket() + ' | ' + app.printGranularity() +
+                                     ' | ' + price_text + ' | BUY')
+                        print("\n", current_df_index, '|', app.getMarket(), app.printGranularity(), '|', price_text,
+                              '| BUY', "\n")
                     else:
                         print('--------------------------------------------------------------------------------')
                         print('|                      *** Executing LIVE Buy Order ***                        |')
                         print('--------------------------------------------------------------------------------')
 
                     # display balances
-                    print (app.getBaseCurrency(), 'balance before order:', account.getBalance(app.getBaseCurrency()))
-                    print (app.getQuoteCurrency(), 'balance before order:', account.getBalance(app.getQuoteCurrency()))
+                    print(app.getBaseCurrency(), 'balance before order:', account.getBalance(app.getBaseCurrency()))
+                    print(app.getQuoteCurrency(), 'balance before order:', account.getBalance(app.getQuoteCurrency()))
 
                     # execute a live market buy
-                    state.last_buy_size = min(float(account.getBalance(app.getQuoteCurrency())), app.getMaxBuyAmount())
+                    state.last_buy_size = float(account.getBalance(app.getQuoteCurrency()))
+                    if app.getBuyMaxSize() and state.last_buy_size > app.getBuyMaxSize():
+                        state.last_buy_size = app.getBuyMaxSize()
+
                     resp = app.marketBuy(app.getMarket(), state.last_buy_size, app.getBuyPercent())
                     logging.info(resp)
 
                     # display balances
-                    print (app.getBaseCurrency(), 'balance after order:', account.getBalance(app.getBaseCurrency()))
-                    print (app.getQuoteCurrency(), 'balance after order:', account.getBalance(app.getQuoteCurrency()))
+                    print(app.getBaseCurrency(), 'balance after order:', account.getBalance(app.getBaseCurrency()))
+                    print(app.getQuoteCurrency(), 'balance after order:', account.getBalance(app.getQuoteCurrency()))
                 # if not live
                 else:
-                     # TODO: calculate buy amount from dummy account
+                    # TODO: calculate buy amount from dummy account
                     state.last_buy_size = 1000
 
                     state.last_buy_price = price
 
-                    if app.isVerbose() == 0:
-                        logging.info(current_df_index + ' | ' + app.getMarket() + ' ' + str(app.getGranularity()) + ' | ' + price_text + ' | BUY')
-                        print ("\n", current_df_index, '|', app.getMarket(), str(app.getGranularity()), '|', price_text, '| BUY')
+                    if not app.isVerbose():
+                        logging.info(current_df_index + ' | ' + app.getMarket() + ' | ' + app.printGranularity() +
+                                     ' | ' + price_text + ' | BUY')
+                        print("\n", current_df_index, '|', app.getMarket(), app.printGranularity(), '|', price_text, '| BUY')
 
                         bands = ta.getFibonacciRetracementLevels(float(price))
-                        print (' Fibonacci Retracement Levels:', str(bands))
+                        print(' Fibonacci Retracement Levels:', str(bands))
                         ta.printSupportResistanceLevel(float(price))
 
                         if len(bands) >= 1 and len(bands) <= 2:
@@ -846,10 +838,10 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                         print('|                      *** Executing TEST Buy Order ***                        |')
                         print('--------------------------------------------------------------------------------')
 
-                if app.shouldSaveGraphs() == 1:
+                if app.shouldSaveGraphs():
                     tradinggraphs = TradingGraphs(ta)
                     ts = datetime.now().timestamp()
-                    filename = app.getMarket() + '_' + str(app.getGranularity()) + '_buy_' + str(ts) + '.png'
+                    filename = app.getMarket() + '_' + app.printGranularity() + '_buy_' + str(ts) + '.png'
                     tradinggraphs.renderEMAandMACD(len(trading_data), 'graphs/' + filename, True)
 
             # if a sell signal
@@ -860,18 +852,21 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.sell_sum = state.sell_sum + price_incl_fees
 
                 # if live
-                if app.isLive() == 1:
+                if app.isLive():
                     # telegram
                     if not app.disableTelegram() and app.isTelegramEnabled():
                         telegram = app.getChatClient()
-                        telegram.send(app.getMarket() + ' (' + str(app.getGranularity()) + ') SELL at ' + price_text + ' (margin: ' + margin_text + ', (delta: ' + str(round(price - state.last_buy_price, 2)) + ')')
+                        telegram.send(app.getMarket() + ' (' + app.printGranularity() + ') SELL at ' +
+                                      price_text + ' (margin: ' + margin_text + ', (delta: ' +
+                                      str(round(price - state.last_buy_price, precision)) + ')')
 
-                    if app.isVerbose() == 0:
-                        logging.info(current_df_index + ' | ' + app.getMarket() + ' ' + str(app.getGranularity()) + ' | ' + price_text + ' | SELL')
-                        print ("\n", current_df_index, '|', app.getMarket(), str(app.getGranularity()), '|', price_text, '| SELL')
+                    if not app.isVerbose():
+                        logging.info(current_df_index + ' | ' + app.getMarket() + ' | ' + app.printGranularity() +
+                                     ' | ' + price_text + ' | SELL')
+                        print("\n", current_df_index, '|', app.getMarket(), app.printGranularity(), '|', price_text, '| SELL')
 
                         bands = ta.getFibonacciRetracementLevels(float(price))
-                        print (' Fibonacci Retracement Levels:', str(bands), "\n")
+                        print(' Fibonacci Retracement Levels:', str(bands), "\n")
 
                         if len(bands) >= 1 and len(bands) <= 2:
                             if len(bands) == 1:
@@ -897,48 +892,53 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                         print('--------------------------------------------------------------------------------')
 
                     # display balances
-                    print (app.getBaseCurrency(), 'balance before order:', account.getBalance(app.getBaseCurrency()))
-                    print (app.getQuoteCurrency(), 'balance before order:', account.getBalance(app.getQuoteCurrency()))
+                    print(app.getBaseCurrency(), 'balance before order:', account.getBalance(app.getBaseCurrency()))
+                    print(app.getQuoteCurrency(), 'balance before order:', account.getBalance(app.getQuoteCurrency()))
 
                     # execute a live market sell
-                    resp = app.marketSell(app.getMarket(), float(account.getBalance(app.getBaseCurrency())), app.getSellPercent())
+                    resp = app.marketSell(app.getMarket(), float(account.getBalance(app.getBaseCurrency())),
+                                          app.getSellPercent())
                     logging.info(resp)
 
                     # display balances
-                    print (app.getBaseCurrency(), 'balance after order:', account.getBalance(app.getBaseCurrency()))
-                    print (app.getQuoteCurrency(), 'balance after order:', account.getBalance(app.getQuoteCurrency()))
+                    print(app.getBaseCurrency(), 'balance after order:', account.getBalance(app.getBaseCurrency()))
+                    print(app.getQuoteCurrency(), 'balance after order:', account.getBalance(app.getQuoteCurrency()))
 
                 # if not live
                 else:
-                    if app.isVerbose() == 0:
+                    if not app.isVerbose():
                         margin, profit, sell_fee = calculate_margin(
-                            buy_size=state.last_buy_size, 
-                            buy_filled=state.last_buy_filled, 
-                            buy_price=state.last_buy_price, 
-                            buy_fee=state.last_buy_fee, 
-                            sell_percent=app.getSellPercent(), 
-                            sell_price=price, 
-                            sell_taker_fee=app.getTakerFee(), 
-                            debug=False,
-                            exchange=app.getExchange())
+                            buy_size=state.last_buy_size,
+                            buy_filled=state.last_buy_filled,
+                            buy_price=state.last_buy_price,
+                            buy_fee=state.last_buy_fee,
+                            sell_percent=app.getSellPercent(),
+                            sell_price=price,
+                            sell_taker_fee=app.getTakerFee(),
+                            debug=False)
 
                         if price > 0:
-                            margin_text = str(app.truncate(margin, 2)) + '%'
+                            margin_text = str(app.truncate(margin, precision)) + '%'
                         else:
                             margin_text = '0%'
 
-                        logging.info(current_df_index + ' | ' + app.getMarket() + ' ' + str(app.getGranularity()) + ' | SELL | ' + str(price) + ' | BUY | ' + str(state.last_buy_price) + ' | DIFF | ' + str(profit) + ' | MARGIN NO FEES | ' + margin_text + ' | MARGIN FEES | ' + str(sell_fee))
-                        print ("\n", current_df_index, '|', app.getMarket(), str(app.getGranularity()), '| SELL |', str(price), '| BUY |', str(state.last_buy_price), '| DIFF |', str(profit) , '| MARGIN NO FEES |', margin_text, '| MARGIN FEES |', str(round(sell_fee, 2)), "\n")
+                        logging.info(current_df_index + ' | ' + app.getMarket() + ' ' +
+                                     app.printGranularity() + ' | SELL | ' + str(price) + ' | BUY | ' +
+                                     str(state.last_buy_price) + ' | DIFF | ' + str(profit) + ' | MARGIN NO FEES | ' +
+                                     margin_text + ' | MARGIN FEES | ' + str(sell_fee))
+                        print("\n", current_df_index, '|', app.getMarket(), app.printGranularity(), '| SELL |',
+                              str(price), '| BUY |', str(state.last_buy_price), '| DIFF |', str(profit),
+                              '| MARGIN NO FEES |', margin_text, '| MARGIN FEES |', str(round(sell_fee, precision)), "\n")
 
                     else:
                         print('--------------------------------------------------------------------------------')
                         print('|                      *** Executing TEST Sell Order ***                        |')
                         print('--------------------------------------------------------------------------------')
 
-                if app.shouldSaveGraphs() == 1:
+                if app.shouldSaveGraphs():
                     tradinggraphs = TradingGraphs(ta)
                     ts = datetime.now().timestamp()
-                    filename = app.getMarket() + '_' + str(app.getGranularity()) + '_sell_' + str(ts) + '.png'
+                    filename = app.getMarket() + '_' + app.printGranularity() + '_sell_' + str(ts) + '.png'
                     tradinggraphs.renderEMAandMACD(len(trading_data), 'graphs/' + filename, True)
 
                 # reset values after buy
@@ -948,50 +948,51 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 state.last_buy_high = 0
 
             # last significant action
-            if state.action in [ 'BUY', 'SELL' ]:
+            if state.action in ['BUY', 'SELL']:
                 state.last_action = state.action
 
             state.last_df_index = str(df_last.index.format()[0])
 
             if state.iterations == len(df):
-                print ("\nSimulation Summary\n")
+                print("\nSimulation Summary\n")
 
-                if state.buy_count > state.sell_count and app.allowSellAtLoss() == 1:
+                if state.buy_count > state.sell_count and app.allowSellAtLoss():
                     fee = price * app.getTakerFee()
                     last_price_minus_fees = price - fee
                     state.sell_sum = state.sell_sum + last_price_minus_fees
                     state.sell_count = state.sell_count + 1
 
-                elif state.buy_count > state.sell_count and app.allowSellAtLoss() == 0:
-                    print ('        Note : "sell at loss" is disabled and you have an open trade, if the margin')
-                    print ('               result below is negative it will assume you sold at the end of the')
-                    print ('               simulation which may not be ideal. Try setting --sellatloss 1', "\n")
+                elif state.buy_count > state.sell_count and not app.allowSellAtLoss():
+                    print('        Note : "sell at loss" is disabled and you have an open trade, if the margin')
+                    print('               result below is negative it will assume you sold at the end of the')
+                    print('               simulation which may not be ideal. Try setting --sellatloss 1', "\n")
 
-                print ('   Buy Count :', state.buy_count)
-                print ('  Sell Count :', state.sell_count, "\n")
+                print('   Buy Count :', state.buy_count)
+                print('  Sell Count :', state.sell_count, "\n")
 
                 if state.sell_count > 0:
-                    print ('      Margin :', str(app.truncate((((state.sell_sum - state.buy_sum) /state.sell_sum) * 100), 2)) + '%', "\n")
+                    print('      Margin :',
+                          str(app.truncate((((state.sell_sum - state.buy_sum) /state.sell_sum) * 100), precision)) + '%', "\n")
 
-                    print ('  ** non-live simulation, assuming highest fees', "\n")
+                    print('  ** non-live simulation, assuming highest fees', "\n")
 
         else:
-            print (now, '|', app.getMarket() + bullbeartext, '|', str(app.getGranularity()), '| Current Price:', price)
+            print(now, '|', app.getMarket() + bullbeartext, '|', app.printGranularity(), '| Current Price:', price)
 
             # decrement ignored iteration
             state.iterations = state.iterations - 1
 
         # if live
-        if not app.disableTracker() and app.isLive() == 1:
+        if not app.disableTracker() and app.isLive():
             # update order tracker csv
             if app.getExchange() == 'binance':
                 account.saveTrackerCSV(app.getMarket())
             elif app.getExchange() == 'coinbasepro':
                 account.saveTrackerCSV()
 
-        if app.isSimulation() == 1:
+        if app.isSimulation():
             if state.iterations < 300:
-                if app.simuluationSpeed() in [ 'fast', 'fast-sample' ]:
+                if app.simuluationSpeed() in ['fast', 'fast-sample']:
                     # fast processing
                     executeJob(sc, app, state, trading_data)
                 else:
@@ -1003,6 +1004,7 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
             # poll every 2 minutes
             list(map(s.cancel, s.queue))
             s.enter(120, 1, executeJob, (sc, app, state))
+
 
 def main():
     try:
@@ -1019,20 +1021,24 @@ def main():
 
         if not app.disableTelegram() and app.isTelegramEnabled():
             telegram = app.getChatClient()
-        
+
         # telegram
         if telegram:
+            message = 'Starting '
             if app.getExchange() == 'coinbasepro':
-                telegram.send('Starting Coinbase Pro bot for ' + app.getMarket() + ' using granularity ' + str(app.getGranularity()))
+                message += 'Coinbase Pro bot'
             elif app.getExchange() == 'binance':
-                telegram.send('Starting Binance bot for ' + app.getMarket() + ' using granularity ' + str(app.getGranularity()))
+                message += 'Binance bot'
+
+            message += ' for ' + app.getMarket() + ' using granularity ' + app.printGranularity()
+            telegram.send(message)
 
         # initialise and start application
         trading_data = app.startApp(account, state.last_action)
 
         def runApp():
             # run the first job immediately after starting
-            if app.isSimulation() == 1:
+            if app.isSimulation():
                 executeJob(s, app, state, trading_data)
             else:
                 executeJob(s, app, state)
@@ -1076,5 +1082,6 @@ def main():
         print(repr(e))
 
         raise
+
 
 main()
