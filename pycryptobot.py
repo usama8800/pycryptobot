@@ -100,6 +100,8 @@ def getAction(now: datetime = datetime.today().strftime('%Y-%m-%d %H:%M:%S'), ap
     ema12ltema26co = bool(df_last['ema12ltema26co'].values[0])
     macdltsignal = bool(df_last['macdltsignal'].values[0])
 
+    action = '' 
+
     # criteria for a buy signal
     if ema12gtema26co is True \
             and (macdgtsignal is True or app.disableBuyMACD()) \
@@ -107,6 +109,8 @@ def getAction(now: datetime = datetime.today().strftime('%Y-%m-%d %H:%M:%S'), ap
             and (obv_pc > -5 or app.disableBuyOBV()) \
             and (elder_ray_buy is True or app.disableBuyElderRay()) \
             and last_action != 'BUY':
+
+        action = 'BUY'
 
         if debug is True:
             print('*** Buy Signal ***')
@@ -121,24 +125,14 @@ def getAction(now: datetime = datetime.today().strftime('%Y-%m-%d %H:%M:%S'), ap
                 print(f'elder_ray_buy: {elder_ray_buy}')
             print(f'last_action: {last_action}')
 
-        # if disabled, do not buy within 3% of the dataframe close high
-        if app.disableBuyNearHigh() is True and (price > (df['close'].max() * 0.97)):
-            state.action = 'WAIT'
-
-            log_text = str(now) + ' | ' + app.getMarket() + ' | ' + \
-                app.printGranularity() + ' | Ignoring Buy Signal (price ' + str(price) + ' within 3% of high ' + str(
-                df['close'].max()) + ')'
-            print(log_text, "\n")
-            logging.warning(log_text)
-
-        return 'BUY'
-
     elif ema12gtema26 is True \
             and macdgtsignalco is True \
             and (goldencross is True or app.disableBullOnly()) \
             and (obv_pc > -5 or app.disableBuyOBV()) \
             and (elder_ray_buy is True or app.disableBuyElderRay()) \
             and last_action != 'BUY':
+
+        action = 'BUY'
 
         if debug is True:
             print('*** Buy Signal ***')
@@ -151,23 +145,14 @@ def getAction(now: datetime = datetime.today().strftime('%Y-%m-%d %H:%M:%S'), ap
             if not app.disableBuyElderRay():
                 print(f'elder_ray_buy: {elder_ray_buy}')
             print(f'last_action: {last_action}')
-
-        # if disabled, do not buy within 3% of the dataframe close high
-        if app.disableBuyNearHigh() is True and (price > (df['close'].max() * 0.97)):
-            state.action = 'WAIT'
-
-            log_text = str(now) + ' | ' + app.getMarket() + ' | ' + \
-                app.printGranularity() + ' | Ignoring Buy Signal (price ' + str(price) + ' within 3% of high ' + str(
-                df['close'].max()) + ')'
-            print(log_text, "\n")
-            logging.warning(log_text)
-
-        return 'BUY'
+        
 
     # criteria for a sell signal
     elif ema12ltema26co is True \
             and (macdltsignal is True or app.disableBuyMACD()) \
             and last_action not in ['', 'SELL']:
+
+        action = 'SELL'
 
         if debug is True:
             print('*** Sell Signal ***')
@@ -175,9 +160,21 @@ def getAction(now: datetime = datetime.today().strftime('%Y-%m-%d %H:%M:%S'), ap
             print(f'macdltsignal: {macdltsignal}')
             print(f'last_action: {last_action}')
 
-        return 'SELL'
+    # anything other than a buy or sell, just wait
+    else:
+        state.action = 'WAIT'
 
-    return 'WAIT'
+    # if disabled, do not buy within 3% of the dataframe close high
+    if app.disableBuyNearHigh() is True and (price > (df['close'].max() * 0.97)):
+        log_text = str(now) + ' | ' + app.getMarket() + ' | ' + \
+            app.printGranularity() + ' | Ignoring Buy Signal (price ' + str(price) + ' within 3% of high ' + str(
+            df['close'].max()) + ')'
+        print(log_text, "\n")
+        logging.warning(log_text)
+
+        action = 'WAIT'
+
+    return action
 
 
 def getInterval(df: pd.DataFrame = pd.DataFrame(), app: PyCryptoBot = None, iterations: int = 0) -> pd.DataFrame:
@@ -317,13 +314,14 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
         state.action = getAction(now, app, price, df, df_last, state.last_action, False)
 
         immediate_action = False
+        margin, profit, sell_fee = 0, 0, 0
 
         if state.last_buy_size > 0 and state.last_buy_price > 0 and price > 0 and state.last_action == 'BUY':
             # update last buy high
             if price > state.last_buy_high:
                 state.last_buy_high = price
 
-            if state.last_buy_high > 1:
+            if state.last_buy_high > 0:
                 change_pcnt_high = ((price / state.last_buy_high) - 1) * 100
             else:
                 change_pcnt_high = 0
@@ -370,7 +368,8 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                 app.notifyTelegram(app.getMarket() + ' (' + app.printGranularity() + ') ' + log_text)
 
             # loss failsafe sell at trailing_stop_loss
-            if margin > 0 and app.trailingStopLoss() != None and change_pcnt_high < app.trailingStopLoss():
+            if app.trailingStopLoss() != None and change_pcnt_high < app.trailingStopLoss() and (
+                    app.allowSellAtLoss() or margin > 0):
                 state.action = 'SELL'
                 state.last_action = 'BUY'
                 immediate_action = True
@@ -951,7 +950,11 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
 
 
         else:
-            print(now, '|', app.getMarket() + bullbeartext, '|', app.printGranularity(), '| Current Price:', price)
+            if state.last_buy_size > 0 and state.last_buy_price > 0 and price > 0 and state.last_action == 'BUY':
+                # show profit and margin if already bought
+                print(now, '|', app.getMarket() + bullbeartext, '|', app.printGranularity(), '| Current Price:', price, '| Margin:', margin, '| Profit:', profit)
+            else:
+                print(now, '|', app.getMarket() + bullbeartext, '|', app.printGranularity(), '| Current Price:', price)
 
             # decrement ignored iteration
             state.iterations = state.iterations - 1

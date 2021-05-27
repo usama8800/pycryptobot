@@ -148,3 +148,5 @@ graphs/
 .vs/
 
 *.log
+
+tests/unit_tests/data/*.json
