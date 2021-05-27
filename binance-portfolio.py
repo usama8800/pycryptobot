@@ -1,5 +1,4 @@
 import time
-from typing import Set
 
 import mezmorize
 import numpy as np
@@ -45,7 +44,7 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000 - 10000):
     )
     if len(res) == 0:
         print(symbol, endTime, res)
-    return float(res[0][1])
+    return float(res[0][4])
 
 
 @cache.memoize()
@@ -91,7 +90,7 @@ def getWithdraws():
     return df
 
 
-@cache.memoize(unless=lambda: True)
+@cache.memoize()
 def getDusts():
     dusts = client.get_dust_log()
     df = pd.DataFrame(dusts["results"]["rows"][0]["logs"])

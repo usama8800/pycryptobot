@@ -6,7 +6,7 @@
         "config": {
             "base_currency": "SAMPLE",
             "quote_currency": "USDT",
-            "granularity": "1m",
+            "granularity": "15m",
             "buypercent": 50,
             "sellatloss": false,
             "live": true,
