@@ -27,7 +27,6 @@ def fullPrint(df):
         print(df)
 
 
-@cache.memoize()
 def getPriceAtTime(symbol: str, endTime=time.time() * 1000 - 10000):
     if symbol in ["USDT", *extraRows]:
         return 1
@@ -47,7 +46,6 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000 - 10000):
     return float(res[0][4])
 
 
-@cache.memoize()
 def getAllOrders(symbol: str) -> DataFrame:
     resp = client.get_all_orders(symbol=symbol + "USDT", limit=1000)
     df = pd.DataFrame(resp)
@@ -67,7 +65,6 @@ def getAllOrders(symbol: str) -> DataFrame:
     return df
 
 
-@cache.memoize()
 def getBalances():
     accountInfo = client.get_account()
     balances = pd.DataFrame(accountInfo["balances"])
@@ -76,7 +73,6 @@ def getBalances():
     return balances
 
 
-@cache.memoize()
 def getWithdraws():
     hist = client.get_withdraw_history(status=6, limit=1000)
     df = pd.DataFrame(hist["withdrawList"])
@@ -90,7 +86,6 @@ def getWithdraws():
     return df
 
 
-@cache.memoize()
 def getDusts():
     dusts = client.get_dust_log()
     df = pd.DataFrame(dusts["results"]["rows"][0]["logs"])
