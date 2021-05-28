@@ -19,6 +19,7 @@ cache = mezmorize.Cache(
     CACHE_TYPE="filesystem", CACHE_DIR="cache", CACHE_DEFAULT_TIMEOUT=3600
 )
 extraRows = ["Fees", "Lost", "Withdraws"]
+knownSymbols = ['ADA', 'BNB', 'BTC', 'BUSD', 'DOGE', 'ETH', 'LRC', 'LTC', 'ONT', 'XLM', 'XRP']
 tradefees = 0.00075
 
 
@@ -124,6 +125,7 @@ def main():
                 converts["To Symbol"].unique(),
                 balances["asset"],
                 extraRows,
+                knownSymbols,
             ),
         )
     )
@@ -202,6 +204,7 @@ def main():
     sums = portfolio.sum(0)
     fullPrint(portfolio)
     print()
+    print("USD In", sums["USD In"])
     print("USD Out", sums["USD Out"])
     print("Actual Profit", sums["USD Out"] - sums["USD In"])
     print(
