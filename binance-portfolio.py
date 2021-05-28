@@ -19,7 +19,7 @@ cache = mezmorize.Cache(
     CACHE_TYPE="filesystem", CACHE_DIR="cache", CACHE_DEFAULT_TIMEOUT=3600
 )
 extraRows = ["Fees", "Lost", "Withdraws"]
-knownSymbols = ['ADA', 'BNB', 'BTC', 'BUSD', 'DOGE', 'ETH', 'LRC', 'LTC', 'ONT', 'XLM', 'XRP']
+knownSymbols = ['ADA', 'BNB', 'BTC', 'BUSD', 'DOGE', 'ETH', 'LRC', 'LTC', 'MIR', 'ONT', 'XLM', 'XRP']
 tradefees = 0.00075
 
 
