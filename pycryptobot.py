@@ -100,7 +100,7 @@ def getAction(now: datetime = datetime.today().strftime('%Y-%m-%d %H:%M:%S'), ap
     ema12ltema26co = bool(df_last['ema12ltema26co'].values[0])
     macdltsignal = bool(df_last['macdltsignal'].values[0])
 
-    action = '' 
+    action = ''
 
     # criteria for a buy signal
     if ema12gtema26co is True \
@@ -145,7 +145,7 @@ def getAction(now: datetime = datetime.today().strftime('%Y-%m-%d %H:%M:%S'), ap
             if not app.disableBuyElderRay():
                 print(f'elder_ray_buy: {elder_ray_buy}')
             print(f'last_action: {last_action}')
-        
+
 
     # criteria for a sell signal
     elif ema12ltema26co is True \
@@ -770,6 +770,9 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                     state.buy_count = state.buy_count + 1
                     state.buy_sum = state.buy_sum + state.last_buy_size
 
+                    state.coins = state.funds / price
+                    state.funds = 0
+
                     if not app.isVerbose():
                         logging.debug(formatted_current_df_index + ' | ' + app.getMarket() + ' | ' + app.printGranularity() +
                                      ' | ' + price_text + ' | BUY')
@@ -862,6 +865,9 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
 
                 # if not live
                 else:
+                    state.funds = state.coins * price
+                    state.coins = 0
+
                     margin, profit, sell_fee = calculate_margin(
                         buy_size=state.last_buy_size,
                         buy_filled=state.last_buy_filled,
@@ -927,13 +933,13 @@ def executeJob(sc, app=PyCryptoBot(), state=AppState(), trading_data=pd.DataFram
                     # Reduce sell fee from last sell size
                     state.last_buy_size = state.last_buy_size - state.last_buy_price * app.getTakerFee()
                     state.sell_sum = state.sell_sum + state.last_buy_size
-                    state.sell_count = state.sell_count + 1
 
-                elif state.buy_count > state.sell_count and not app.allowSellAtLoss():
+                if state.buy_count > state.sell_count and not app.allowSellAtLoss():
                     print('        Note : "sell at loss" is disabled and you have an open trade, if the margin')
                     print('               result below is negative it will assume you sold at the end of the')
-                    print('               simulation which may not be ideal. Try setting --sellatloss 1', "\n")
-
+                    print('               simulation which may not be ideal. Try setting --sellatloss 1')
+                    print('              ', state.funds/price, 'coins =', state.funds)
+                    state.last_buy_size += state.funds
 
                 print ('   Buy Count :', state.buy_count)
                 print ('  Sell Count :', state.sell_count)
