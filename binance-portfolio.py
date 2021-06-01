@@ -19,7 +19,6 @@ cache = mezmorize.Cache(
     CACHE_TYPE="filesystem", CACHE_DIR="cache", CACHE_DEFAULT_TIMEOUT=3600
 )
 extraRows = ["Fees", "Lost", "Withdraws"]
-knownSymbols = ['ADA', 'BNB', 'BTC', 'BUSD', 'DOGE', 'ETH', 'LRC', 'LTC', 'MIR', 'ONT', 'XLM', 'XRP']
 tradefees = 0.00075
 
 
@@ -117,6 +116,7 @@ def main():
     converts: DataFrame = pd.read_json(
         "./portfolio-data/converts.json", convert_dates=["Time"]
     )
+    knownSymbols: DataFrame = pd.read_json('./portfolio-data/symbols.json')
     balances = getBalances()
     allSymbols = np.unique(
         np.concatenate(
@@ -125,7 +125,7 @@ def main():
                 converts["To Symbol"].unique(),
                 balances["asset"],
                 extraRows,
-                knownSymbols,
+                knownSymbols[0],
             ),
         )
     )
