@@ -1,4 +1,6 @@
+import logging
 import time
+from datetime import datetime
 
 import mezmorize
 import numpy as np
@@ -20,11 +22,33 @@ cache = mezmorize.Cache(
 )
 extraRows = ["Fees", "Lost", "Withdraws"]
 tradefees = 0.00075
+logging.basicConfig(
+    filename="./portfolio-data/history.log",
+    format="%(message)s",
+    # datefmt="%d-%m-%Y %H:%M:%S",
+    filemode="a",
+    level=logging.DEBUG,
+    force=True,
+    encoding="utf-8",
+)
+
+logging.info("")
+logging.info("=" * 50)
+logging.info((" " * 15) + datetime.now().strftime("%d-%m-%Y %H:%M:%S"))
+logging.info("=" * 50)
+
+
+def log(string="", error=False):
+    print(string)
+    if error:
+        logging.error(string, format="%(levelname)s %(message)s")
+    else:
+        logging.info(string)
 
 
 def fullPrint(df):
     with pd.option_context("display.max_rows", None, "display.max_columns", None):
-        print(df)
+        log(df)
 
 
 def getPriceAtTime(symbol: str, endTime=time.time() * 1000 - 10000):
@@ -42,7 +66,7 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000 - 10000):
         endTime=endTime,
     )
     if len(res) == 0:
-        print(symbol, endTime, res)
+        log(f"{symbol} {endTime} {res}", error=False)
     return float(res[0][4])
 
 
@@ -89,7 +113,7 @@ def getWithdraws():
 def getDusts():
     dusts = client.get_dust_log()
     df = pd.DataFrame(dusts["results"]["rows"][0]["logs"])
-    # print(dusts["results"]["rows"][0]["logs"]["operateTime"])
+    # log(dusts["results"]["rows"][0]["logs"]["operateTime"])
     # while len(dusts["results"]["rows"]) > 0:
     #     # TODO Confirm 0 or -1 for earliest time
     #     dusts = client.get_dust_log(
@@ -116,7 +140,7 @@ def main():
     converts: DataFrame = pd.read_json(
         "./portfolio-data/converts.json", convert_dates=["Time"]
     )
-    knownSymbols: DataFrame = pd.read_json('./portfolio-data/symbols.json')
+    knownSymbols: DataFrame = pd.read_json("./portfolio-data/symbols.json")
     balances = getBalances()
     allSymbols = np.unique(
         np.concatenate(
@@ -203,18 +227,20 @@ def main():
     portfolio = portfolio.sort_values("Profit", ascending=False)
     sums = portfolio.sum(0)
     fullPrint(portfolio)
-    print()
-    print("USD In", sums["USD In"])
-    print("USD Out", sums["USD Out"])
-    print("Actual Profit", sums["USD Out"] - sums["USD In"])
-    print(
-        "Binance Profit",
-        sums["USD Out"]  # What I get
-        - p2p.sum(0)["USD In"]  # What I put in (through P2P)
-        + portfolio.loc["USDT"][
-            "Profit"
-        ]  # What I lost in P2P due to higher rates. Value is negative so adding
-        + portfolio.loc["Withdraws"]["USD In"],
+    log()
+    log(f"USD In {sums['USD In']}")
+    log(f"USD Out {sums['USD Out']}")
+    log(f"Actual Profit {sums['USD Out'] - sums['USD In']}")
+    log(
+        "Binance Profit "
+        + str(
+            sums["USD Out"]  # What I get
+            - p2p.sum(0)["USD In"]  # What I put in (through P2P)
+            + portfolio.loc["USDT"][
+                "Profit"
+            ]  # What I lost in P2P due to higher rates. Value is negative so adding
+            + portfolio.loc["Withdraws"]["USD In"]
+        ),
     )
 
 
