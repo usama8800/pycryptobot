@@ -81,11 +81,11 @@ def getAllOrders(symbol: str) -> DataFrame:
     if len(df) == 0:
         return df
 
-    df = df[(df["status"] != "CANCELED") & (df["status"] != "EXPIRED")]
-    df = df[["executedQty", "cummulativeQuoteQty", "status", "side", "updateTime"]]
+    df = df[["executedQty", "cummulativeQuoteQty", "side", "updateTime"]]
     df[["executedQty", "cummulativeQuoteQty"]] = df[
         ["executedQty", "cummulativeQuoteQty"]
     ].apply(pd.to_numeric)
+    df = df[df['cummulativeQuoteQty'] > 0]
     return df
 
 
@@ -158,9 +158,26 @@ def main():
         {key: zeros for key in ["USD In", "Amount"]}, index=allSymbols
     )
 
+    print('Dusts')
+    for i, dust in getDusts().iterrows():
+        try:
+            portfolio.loc[dust["fromAsset"]]
+        except KeyError:
+            portfolio.loc[dust["fromAsset"]] = 0
+        portfolio.loc[dust["fromAsset"]]["Amount"] -= dust["amount"]
+        portfolio.loc[dust["fromAsset"]]["USD In"] -= dust["amount"] * getPriceAtTime(
+            dust["fromAsset"], dust["operateTime"]
+        )
+        bnbPrice = getPriceAtTime(            "BNB", dust["operateTime"]        )
+        portfolio.loc["BNB"]["Amount"] += dust["transferedAmount"]
+        portfolio.loc["BNB"]["USD In"] += dust["transferedAmount"] * bnbPrice
+        portfolio.loc["Fees"]["USD In"] += dust["serviceChargeAmount"] * bnbPrice
+
+    print('P2P')
     for i, v in p2p.iterrows():
         portfolio.loc[v["Symbol"]]["USD In"] += v["USD In"]
         portfolio.loc[v["Symbol"]]["Amount"] += v["USD In"] / v["Bought At"]
+    print('Converts')
     for i, v in converts.iterrows():
         portfolio.loc[v["From Symbol"]]["Amount"] -= v["From Amount"]
         portfolio.loc[v["To Symbol"]]["Amount"] += v["To Amount"]
@@ -172,6 +189,7 @@ def main():
             v["To Symbol"], v["Time"]
         )
 
+    print('Symbols')
     for symbol in portfolio.index:
         if symbol in extraRows or symbol == "USDT":
             continue
@@ -198,6 +216,7 @@ def main():
                 / getPriceAtTime("BNB", v["updateTime"])
             )
 
+    print('Withdraws')
     for i, withdraw in getWithdraws().iterrows():
         price = getPriceAtTime(withdraw["asset"], withdraw["applyTime"])
         portfolio.loc[withdraw["asset"]]["Amount"] -= withdraw["amount"]
@@ -207,19 +226,6 @@ def main():
 
     # for i, deposit in getDeposits().iterrows():
     #     price
-
-    for i, dust in getDusts().iterrows():
-        portfolio.loc[dust["fromAsset"]]["Amount"] -= dust["amount"]
-        portfolio.loc[dust["fromAsset"]]["USD In"] -= dust["amount"] * getPriceAtTime(
-            dust["fromAsset"], dust["operateTime"]
-        )
-        portfolio.loc["BNB"]["Amount"] += dust["transferedAmount"]
-        portfolio.loc["BNB"]["USD In"] += dust["transferedAmount"] * getPriceAtTime(
-            "BNB", dust["operateTime"]
-        )
-        portfolio.loc["Fees"]["USD In"] += dust["serviceChargeAmount"] * getPriceAtTime(
-            "BNB", dust["operateTime"]
-        )
 
     portfolio.loc["Lost"]["USD In"] = 196.2
     portfolio["USD Out"] = portfolio.apply(calculateUSD, axis=1)
