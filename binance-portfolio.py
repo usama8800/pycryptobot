@@ -1,6 +1,7 @@
 import logging
 import time
 from datetime import datetime
+import json
 
 import mezmorize
 import numpy as np
@@ -17,9 +18,6 @@ pd.set_option(
 )
 app = PyCryptoBot()
 client = Client(app.getAPIKey(), app.getAPISecret(), {"verify": False, "timeout": 20})
-cache = mezmorize.Cache(
-    CACHE_TYPE="filesystem", CACHE_DIR="cache", CACHE_DEFAULT_TIMEOUT=3600
-)
 extraRows = ["Fees", "Lost", "Withdraws"]
 tradefees = 0.00075
 logging.basicConfig(
@@ -31,6 +29,11 @@ logging.basicConfig(
     force=True,
     encoding="utf-8",
 )
+try:
+    with open("./portfolio-data/prices.json", "r") as openfile:
+        prices = json.load(openfile)
+except FileNotFoundError:
+    prices = {}
 
 logging.info("")
 logging.info("=" * 50)
@@ -41,7 +44,7 @@ logging.info("=" * 50)
 def log(string="", error=False):
     print(string)
     if error:
-        logging.error(string, format="%(levelname)s %(message)s")
+        logging.error("ERROR: " + string)
     else:
         logging.info(string)
 
@@ -51,13 +54,18 @@ def fullPrint(df):
         log(df)
 
 
-def getPriceAtTime(symbol: str, endTime=time.time() * 1000 - 10000):
+def getPriceAtTime(symbol: str, endTimeInput=time.time() * 1000):
     if symbol in ["USDT", *extraRows]:
         return 1
-    if "timestamp" in dir(endTime):
-        endTime = endTime.timestamp()
-        endTime = endTime * 1000
+    if "timestamp" in dir(endTimeInput):
+        endTime = endTimeInput.timestamp() * 1000
+    else:
+        endTime = endTimeInput
     endTime = int(endTime)
+    if symbol in prices and endTime in prices[symbol]:
+        print(prices[symbol][endTime])
+        log(prices[symbol][endTime], True)
+        return prices[symbol][endTime]
     # ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', '', '', '', '', '']
     res = client.get_klines(
         symbol=symbol + "USDT",
@@ -67,6 +75,10 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000 - 10000):
     )
     if len(res) == 0:
         log(f"{symbol} {endTime} {res}", error=False)
+    if "timestamp" in dir(endTimeInput):
+        if not symbol in prices:
+            prices[symbol] = {}
+        prices[symbol][endTime] = float(res[0][4])
     return float(res[0][4])
 
 
@@ -85,7 +97,7 @@ def getAllOrders(symbol: str) -> DataFrame:
     df[["executedQty", "cummulativeQuoteQty"]] = df[
         ["executedQty", "cummulativeQuoteQty"]
     ].apply(pd.to_numeric)
-    df = df[df['cummulativeQuoteQty'] > 0]
+    df = df[df["cummulativeQuoteQty"] > 0]
     return df
 
 
@@ -158,7 +170,7 @@ def main():
         {key: zeros for key in ["USD In", "Amount"]}, index=allSymbols
     )
 
-    print('Dusts')
+    print("Dusts")
     for i, dust in getDusts().iterrows():
         try:
             portfolio.loc[dust["fromAsset"]]
@@ -168,16 +180,16 @@ def main():
         portfolio.loc[dust["fromAsset"]]["USD In"] -= dust["amount"] * getPriceAtTime(
             dust["fromAsset"], dust["operateTime"]
         )
-        bnbPrice = getPriceAtTime(            "BNB", dust["operateTime"]        )
+        bnbPrice = getPriceAtTime("BNB", dust["operateTime"])
         portfolio.loc["BNB"]["Amount"] += dust["transferedAmount"]
         portfolio.loc["BNB"]["USD In"] += dust["transferedAmount"] * bnbPrice
         portfolio.loc["Fees"]["USD In"] += dust["serviceChargeAmount"] * bnbPrice
 
-    print('P2P')
+    print("P2P")
     for i, v in p2p.iterrows():
         portfolio.loc[v["Symbol"]]["USD In"] += v["USD In"]
         portfolio.loc[v["Symbol"]]["Amount"] += v["USD In"] / v["Bought At"]
-    print('Converts')
+    print("Converts")
     for i, v in converts.iterrows():
         portfolio.loc[v["From Symbol"]]["Amount"] -= v["From Amount"]
         portfolio.loc[v["To Symbol"]]["Amount"] += v["To Amount"]
@@ -189,7 +201,7 @@ def main():
             v["To Symbol"], v["Time"]
         )
 
-    print('Symbols')
+    print("Symbols")
     for symbol in portfolio.index:
         if symbol in extraRows or symbol == "USDT":
             continue
@@ -216,7 +228,7 @@ def main():
                 / getPriceAtTime("BNB", v["updateTime"])
             )
 
-    print('Withdraws')
+    print("Withdraws")
     for i, withdraw in getWithdraws().iterrows():
         price = getPriceAtTime(withdraw["asset"], withdraw["applyTime"])
         portfolio.loc[withdraw["asset"]]["Amount"] -= withdraw["amount"]
@@ -248,6 +260,10 @@ def main():
             + portfolio.loc["Withdraws"]["USD In"]
         ),
     )
+
+    json_object = json.dumps(prices, indent=4)
+    with open("./portfolio-data/prices.json", "w") as outfile:
+        outfile.write(json_object)
 
 
 if __name__ == "__main__":
