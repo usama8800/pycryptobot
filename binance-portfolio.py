@@ -54,18 +54,14 @@ def fullPrint(df):
         log(df)
 
 
-def getPriceAtTime(symbol: str, endTimeInput=time.time() * 1000):
+def getPriceAtTime(symbol: str, endTime=time.time() * 1000, save=False):
     if symbol in ["USDT", *extraRows]:
         return 1
-    if "timestamp" in dir(endTimeInput):
-        endTime = endTimeInput.timestamp() * 1000
-    else:
-        endTime = endTimeInput
+    if "timestamp" in dir(endTime):
+        endTime = endTime.timestamp() * 1000
     endTime = int(endTime)
-    if symbol in prices and endTime in prices[symbol]:
-        print(prices[symbol][endTime])
-        log(prices[symbol][endTime], True)
-        return prices[symbol][endTime]
+    if symbol in prices and str(endTime) in prices[symbol]:
+        return prices[symbol][str(endTime)]
     # ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', '', '', '', '', '']
     res = client.get_klines(
         symbol=symbol + "USDT",
@@ -75,7 +71,8 @@ def getPriceAtTime(symbol: str, endTimeInput=time.time() * 1000):
     )
     if len(res) == 0:
         log(f"{symbol} {endTime} {res}", error=False)
-    if "timestamp" in dir(endTimeInput):
+    if save:
+        log(f'Saving price for {symbol} at {endTime}')
         if not symbol in prices:
             prices[symbol] = {}
         prices[symbol][endTime] = float(res[0][4])
@@ -178,9 +175,9 @@ def main():
             portfolio.loc[dust["fromAsset"]] = 0
         portfolio.loc[dust["fromAsset"]]["Amount"] -= dust["amount"]
         portfolio.loc[dust["fromAsset"]]["USD In"] -= dust["amount"] * getPriceAtTime(
-            dust["fromAsset"], dust["operateTime"]
+            dust["fromAsset"], dust["operateTime"], True
         )
-        bnbPrice = getPriceAtTime("BNB", dust["operateTime"])
+        bnbPrice = getPriceAtTime("BNB", dust["operateTime"], True)
         portfolio.loc["BNB"]["Amount"] += dust["transferedAmount"]
         portfolio.loc["BNB"]["USD In"] += dust["transferedAmount"] * bnbPrice
         portfolio.loc["Fees"]["USD In"] += dust["serviceChargeAmount"] * bnbPrice
@@ -195,10 +192,10 @@ def main():
         portfolio.loc[v["To Symbol"]]["Amount"] += v["To Amount"]
 
         portfolio.loc[v["From Symbol"]]["USD In"] -= v["From Amount"] * getPriceAtTime(
-            v["From Symbol"], v["Time"]
+            v["From Symbol"], v["Time"], True
         )
         portfolio.loc[v["To Symbol"]]["USD In"] += v["To Amount"] * getPriceAtTime(
-            v["To Symbol"], v["Time"]
+            v["To Symbol"], v["Time"], True
         )
 
     print("Symbols")
@@ -225,12 +222,12 @@ def main():
             portfolio.loc["BNB"]["Amount"] -= (
                 v["cummulativeQuoteQty"]
                 * tradefees
-                / getPriceAtTime("BNB", v["updateTime"])
+                / getPriceAtTime("BNB", v["updateTime"], True)
             )
 
     print("Withdraws")
     for i, withdraw in getWithdraws().iterrows():
-        price = getPriceAtTime(withdraw["asset"], withdraw["applyTime"])
+        price = getPriceAtTime(withdraw["asset"], withdraw["applyTime"], True)
         portfolio.loc[withdraw["asset"]]["Amount"] -= withdraw["amount"]
         portfolio.loc[withdraw["asset"]]["USD In"] -= withdraw["amount"] * price
         portfolio.loc["Fees"]["USD In"] += withdraw["transactionFee"]
