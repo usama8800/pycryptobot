@@ -44,7 +44,7 @@ logging.info("=" * 50)
 def log(string="", error=False):
     print(string)
     if error:
-        logging.error("ERROR: " + string)
+        logging.error("ERROR: " + str(string))
     else:
         logging.info(string)
 
