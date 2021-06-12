@@ -1,7 +1,6 @@
-import re, logging
+import re
 
 from .default_parser import isCurrencyValid, defaultConfigParse, merge_config_and_args
-
 
 def isMarketValid(market) -> bool:
     if market == None:
@@ -95,7 +94,7 @@ def parseMarket(market):
 
 
 def parser(app, binance_config, args={}):
-    logging.info('Binance Configuration parse')
+    #print('Binance Configuration parse')
 
     if not binance_config:
         raise Exception('There is an error in your config dictionnary')
@@ -122,7 +121,8 @@ def parser(app, binance_config, args={}):
             'https://api.binance.com/',
             'https://testnet.binance.vision/api/',
             'https://api.binance.com',
-            'https://testnet.binance.vision/api'
+            'https://testnet.binance.vision/api',
+            'https://api.binance.us',
         ]
 
         # validate Binance API

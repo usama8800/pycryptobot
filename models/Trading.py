@@ -1,14 +1,18 @@
 """Technical analysis on a trading Pandas DataFrame"""
 
-from numpy import floor
-from re import compile
+import warnings
 
-from numpy import maximum, mean, minimum, nan, ndarray, round
+from re import compile
+from numpy import floor, maximum, mean, minimum, nan, ndarray, round
 from numpy import sum as np_sum
 from numpy import where
 from pandas import DataFrame, Series
-from statsmodels.tsa.statespace.sarimax import SARIMAX
+from datetime import datetime, timedelta
+from statsmodels.tsa.statespace.sarimax import SARIMAX, SARIMAXResultsWrapper
+from statsmodels.tools.sm_exceptions import ConvergenceWarning
+from models.helper.LogHelper import Logger
 
+warnings.simplefilter('ignore', ConvergenceWarning)
 
 class TechnicalAnalysis():
     def __init__(self, data=DataFrame()) -> None:
@@ -23,7 +27,10 @@ class TechnicalAnalysis():
         if not isinstance(data, DataFrame):
             raise TypeError('Data is not a Pandas dataframe.')
 
-        if list(data.keys()) != [ 'date', 'market', 'granularity', 'low', 'high', 'open', 'close', 'volume' ]:
+        if 'date' not in data and 'market' not in data and 'granularity' not in data \
+            and 'low' not in data and 'high' not in data \
+            and 'open' not in data and 'close' not in data \
+            and 'volume' not in data:
             raise ValueError('Data not not contain date, market, granularity, low, high, open, close, volume')
 
         if not 'close' in data.columns:
@@ -57,6 +64,8 @@ class TechnicalAnalysis():
         self.addFibonacciBollingerBands()
 
         self.addRSI(14)
+        self.addStochasticRSI(14)
+        self.addWilliamsR(14)
         self.addMACD()
         self.addOBV()
         self.addElderRayIndex()
@@ -369,6 +378,20 @@ class TechnicalAnalysis():
 
         return rsi
 
+    def calculateStochasticRelativeStrengthIndex(self, series: int, interval: int=14) -> float:
+        """Calculates the Stochastic RSI on a Pandas series of RSI"""
+
+        if not isinstance(series, Series):
+            raise TypeError('Pandas Series required.')
+
+        if not isinstance(interval, int):
+            raise TypeError('Interval integer required.')
+
+        if(len(series) < interval):
+            raise IndexError('Pandas Series smaller than interval.')
+
+        return (series - series.rolling(interval).min()) / (series.rolling(interval).max() - series.rolling(interval).min())
+
     def addFibonacciBollingerBands(self, interval: int=20, multiplier: int=3) -> None:
         """Adds Fibonacci Bollinger Bands."""
 
@@ -451,6 +474,35 @@ class TechnicalAnalysis():
         rsi = rsi.fillna(50)
         return rsi
 
+    def stochasticRelativeStrengthIndex(self, period) -> DataFrame:
+        """Calculate the Stochastic Relative Strength Index (Stochastic RSI)"""
+
+        if not isinstance(period, int):
+            raise TypeError('Period parameter is not perioderic.')
+
+        if period < 7 or period > 21:
+            raise ValueError('Period is out of range')
+
+        if 'rsi' + str(period) not in self.df:
+            self.addRSI(period)
+
+        # calculate relative strength index
+        stochrsi = self.calculateStochasticRelativeStrengthIndex(self.df['rsi' + str(period)], period)
+        # default to midway-50 for first entries
+        stochrsi = stochrsi.fillna(0.5)
+        return stochrsi
+
+    def williamsR(self, period) -> DataFrame:
+        """Calculate the Williams %R"""
+
+        if not isinstance(period, int):
+            raise TypeError('Period parameter is not perioderic.')
+
+        if period < 7 or period > 21:
+            raise ValueError('Period is out of range')
+
+        return (self.df['high'].rolling(14).max() - self.df['close']) / (self.df['high'].rolling(14).max() - self.df['low'].rolling(14).min())
+
     def addRSI(self, period: int) -> None:
         """Adds the Relative Strength Index (RSI) to the DataFrame"""
 
@@ -463,10 +515,34 @@ class TechnicalAnalysis():
         self.df['rsi' + str(period)] = self.relativeStrengthIndex(period)   
         self.df['rsi' + str(period)] = self.df['rsi' + str(period)].replace(nan, 50)
 
-    def seasonalARIMAModel(self): # TODO: annotate return type
+    def addStochasticRSI(self, period: int) -> None:
+        """Adds the Stochastic Relative Strength Index (RSI) to the DataFrame"""
+
+        if not isinstance(period, int):
+            raise TypeError('Period parameter is not perioderic.')
+
+        if period < 7 or period > 21:
+            raise ValueError('Period is out of range')
+
+        self.df['stochrsi' + str(period)] = self.stochasticRelativeStrengthIndex(period)   
+        self.df['stochrsi' + str(period)] = self.df['stochrsi' + str(period)].replace(nan, 0.5)
+
+    def addWilliamsR(self, period: int) -> None:
+        """Adds the Willams %R to the DataFrame"""
+
+        if not isinstance(period, int):
+            raise TypeError('Period parameter is not perioderic.')
+
+        if period < 7 or period > 21:
+            raise ValueError('Period is out of range')
+
+        self.df['williamsr' + str(period)] = self.williamsR(period)   
+        self.df['williamsr' + str(period)] = self.df['williamsr' + str(period)].replace(nan, -50)
+
+    def seasonalARIMAModel(self) -> SARIMAXResultsWrapper:
         """Returns the Seasonal ARIMA Model for price predictions"""
 
-        # parameters for SARIMAX
+        # hyperparameters for SARIMAX
         model = SARIMAX(self.df['close'], trend='n', order=(0,1,0), seasonal_order=(1,1,1,12))
         return model.fit(disp=-1)
 
@@ -474,6 +550,39 @@ class TechnicalAnalysis():
         """Returns the Seasonal ARIMA Model for price predictions"""
 
         return self.seasonalARIMAModel().fittedvalues
+
+    def seasonalARIMAModelPrediction(self, minutes: int=180) -> tuple:
+        """Returns seasonal ARIMA model prediction
+        
+        Parameters
+        ----------
+        minutes     : int
+            Number of minutes to predict      
+        """
+
+        if not isinstance(minutes, int):
+            raise TypeError('Prediction minutes is not numeric.')
+
+        if minutes < 1 or minutes > len(self.df):
+            raise ValueError('Predication minutes is out of range')
+
+        results_ARIMA = self.seasonalARIMAModel()
+
+        start_ts = self.df.last_valid_index()
+        end_ts = start_ts + timedelta(minutes=minutes)
+        pred = results_ARIMA.predict(start=str(start_ts), end=str(end_ts), dynamic=True)
+
+        try:
+            if len(pred) == 0:
+                df_last = self.df['close'].tail(1)
+                return (str(df_last.index.values[0]).replace('T', ' ').replace('.000000000', ''), df_last.values[0])
+            else:
+                df_last = pred.tail(1)
+                return (str(df_last.index.values[0]).replace('T', ' ').replace('.000000000', ''), df_last.values[0])
+        except Exception:
+            return None
+
+        return None
 
     def simpleMovingAverage(self, period: int) -> float:
         """Calculates the Simple Moving Average (SMA)"""
@@ -560,11 +669,11 @@ class TechnicalAnalysis():
             if len(df) > 0:
                 df_last = df.tail(1)
                 if float(df_last[0]) < price:
-                    print (' Support level of ' + str(df_last[0]) + ' formed at ' + str(df_last.index[0]), "\n")
+                    Logger.info(' Support level of ' + str(df_last[0]) + ' formed at ' + str(df_last.index[0]))
                 elif float(df_last[0]) > price:
-                    print (' Resistance level of ' + str(df_last[0]) + ' formed at ' + str(df_last.index[0]), "\n")
+                    Logger.info(' Resistance level of ' + str(df_last[0]) + ' formed at ' + str(df_last.index[0]))
                 else:
-                    print (' Support/Resistance level of ' + str(df_last[0]) + ' formed at ' + str(df_last.index[0]), "\n")
+                    Logger.info(' Support/Resistance level of ' + str(df_last[0]) + ' formed at ' + str(df_last.index[0]))
 
     def getResistance(self, price: float=0) -> float:
         if isinstance(price, int) or isinstance(price, float):
@@ -827,7 +936,7 @@ class TechnicalAnalysis():
         try:
             self.df.to_csv(filename)
         except OSError:
-            print('Unable to save: ', filename)
+            Logger.critical(f'Unable to save: {filename}')
 
     def __calculateSupportResistenceLevels(self):
         """Support and Resistance levels. (private function)"""

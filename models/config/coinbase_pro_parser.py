@@ -1,7 +1,6 @@
-import re, logging
+import re
 
 from .default_parser import isCurrencyValid, defaultConfigParse, merge_config_and_args
-
 
 def isMarketValid(market) -> bool:
     p = re.compile(r"^[1-9A-Z]{2,5}\-[1-9A-Z]{2,5}$")
@@ -17,7 +16,7 @@ def parseMarket(market):
 
 
 def parser(app, coinbase_config, args={}):
-    logging.info('CoinbasePro Configuration parse')
+    #print('CoinbasePro Configuration parse')
 
     if not coinbase_config:
         raise Exception('There is an error in your config dictionary')
@@ -43,7 +42,7 @@ def parser(app, coinbase_config, args={}):
         app.api_secret = coinbase_config['api_secret']
 
         # validates the api passphrase is syntactically correct
-        p = re.compile(r"^[a-z0-9]{10,11}$")
+        p = re.compile(r"^[A-z0-9#$%=@!{},`~&*()<>?.:;_|^/+\[\]]{8,32}$")
         if not p.match(coinbase_config['api_passphrase']):
             raise TypeError('Coinbase Pro API passphrase is invalid')
 

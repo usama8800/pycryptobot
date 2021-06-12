@@ -1,6 +1,6 @@
 [![Docker](https://github.com/whittlem/pycryptobot/actions/workflows/container.yml/badge.svg)](https://github.com/whittlem/pycryptobot/actions/workflows/container.yml/badge.svg) [![Tests](https://github.com/whittlem/pycryptobot/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/whittlem/pycryptobot/actions/workflows/unit-tests.yml/badge.svg)
 
-# Python Crypto Bot v2.17.0 (pycryptobot)
+# Python Crypto Bot v2.30.1 (pycryptobot)
 
 ## Join our chat on Telegram
 
@@ -384,6 +384,27 @@ For telegram, add a piece to the config.json as follows:
     }
 
 You can use @botfather and @myidbot in telegram to create a bot with token and get a client id.
+
+For configuring logger, add a piece to the config.json as follows:
+*This is also default configuration of the logger, if no config is given and log is not disabled this configuration will apply.*
+
+    "logger" : {
+        "filelog": 1,
+        "logfile": "pycryptobot.log",
+        "fileloglevel": "DEBUG",
+        "consolelog": 1,
+        "consoleloglevel": "INFO"
+    }
+
+"filelog" and "consolelog" can only get 1 (enable) or 0 (disable).
+"--disablelog" argument or "disablelog" config will disable to writing logfile as backwards compatibility.
+If you want to disable logging entirely, you can set "filelog" and "consolelog" to 0.
+
+"logfile" is overriden by '--logfile' console argument.
+If '--logfile' used when running bot "logfile": "pycryptobot.log" line in config file will be ignored.
+
+"fileloglevel" and "consoleloglevel" can get one of 'CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG', 'NOTSET'
+For further detail in log levels: https://docs.python.org/3/library/logging.html#logging-levels
 
 ## Multi-Market Trading
 
