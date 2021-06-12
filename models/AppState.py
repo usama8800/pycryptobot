@@ -34,7 +34,7 @@ class AppState():
         self.last_buy_price = 0
         self.last_buy_filled = 0
         self.last_buy_fee = 0
-        self.last_buy_high = 0
+        self.last_buy_high = 0 
         self.last_df_index = ''
         self.sell_count = 0
         self.sell_sum = 0

@@ -140,7 +140,6 @@ class PyCryptoBot():
         self.telegram = False
         self.buypercent = 100
         self.sellpercent = 100
-        self.maxbuyamount = math.inf
         self.last_action = None
         self._chat_client = None
         self.buymaxsize = None
@@ -306,12 +305,6 @@ class PyCryptoBot():
         except Exception:
             return 100
 
-    def getMaxBuyAmount(self):
-        try:
-            return int(self.maxbuyamount)
-        except Exception:
-            return math.inf
-
     def getSellPercent(self):
         try:
             return int(self.sellpercent)
@@ -337,8 +330,6 @@ class PyCryptoBot():
 
         elif self.exchange == 'binance':
             api = BPublicAPI()
-            # if api is None:
-            #     return None
 
             if iso8601start != '' and iso8601end != '':
                 return api.getHistoricalData(

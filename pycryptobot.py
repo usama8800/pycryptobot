@@ -9,7 +9,6 @@ import pandas as pd
 from datetime import datetime
 from models.PyCryptoBot import PyCryptoBot, truncate as _truncate
 from models.AppState import AppState
-from models.PyCryptoBot import PyCryptoBot
 from models.Trading import TechnicalAnalysis
 from models.TradingAccount import TradingAccount
 from models.helper.MarginHelper import calculate_margin
@@ -39,7 +38,7 @@ def getAction(now: datetime = datetime.today().strftime('%Y-%m-%d %H:%M:%S'), ap
     ema12ltema26co = bool(df_last['ema12ltema26co'].values[0])
     macdltsignal = bool(df_last['macdltsignal'].values[0])
 
-    action = ''
+    action = '' 
 
     # criteria for a buy signal
     if ema12gtema26co is True \
@@ -692,16 +691,13 @@ def executeJob(sc=None, app: PyCryptoBot = None, state: AppState = None, trading
                 # if not live
                 else:
                     app.notifyTelegram(app.getMarket() + ' (' + app.printGranularity() + ') TEST BUY at ' + price_text)
-                    # TODO: Improve simulator calculations by including calculations for buy and sell limit configurations.
-                    if state.last_buy_size == 0 and state.last_buy_filled == 0:
+                    # TODO: Improve simulator calculations by including calculations for buy and sell limit configurations. 
+                    if state.last_buy_size == 0 and state.last_buy_filled == 0: 
                         state.last_buy_size = 1000
                         state.first_buy_size = 1000
 
                     state.buy_count = state.buy_count + 1
-                    state.buy_sum = state.buy_sum + state.last_buy_size
-
-                    state.coins = state.funds / price
-                    state.funds = 0
+                    state.buy_sum = state.buy_sum + state.last_buy_size    
 
                     if not app.isVerbose():
                         Logger.info(formatted_current_df_index + ' | ' + app.getMarket() + ' | ' + app.printGranularity() + ' | ' + price_text + ' | BUY')
@@ -791,9 +787,6 @@ def executeJob(sc=None, app: PyCryptoBot = None, state: AppState = None, trading
 
                 # if not live
                 else:
-                    state.funds = state.coins * price
-                    state.coins = 0
-
                     margin, profit, sell_fee = calculate_margin(
                         buy_size=state.last_buy_size, 
                         buy_filled=state.last_buy_filled, 
@@ -855,6 +848,7 @@ def executeJob(sc=None, app: PyCryptoBot = None, state: AppState = None, trading
                     # Reduce sell fee from last sell size
                     state.last_buy_size = state.last_buy_size - state.last_buy_price * app.getTakerFee()
                     state.sell_sum = state.sell_sum + state.last_buy_size
+                    state.sell_count = state.sell_count + 1
 
                 elif state.buy_count > state.sell_count and not app.allowSellAtLoss():
                     Logger.info("\n")
