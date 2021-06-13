@@ -75,7 +75,7 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000, save=False):
         log(f'Saving price for {symbol} at {endTime}')
         if not symbol in prices:
             prices[symbol] = {}
-        prices[symbol][endTime] = float(res[0][4])
+        prices[symbol][str(endTime)] = float(res[0][4])
     return float(res[0][4])
 
 
@@ -108,31 +108,34 @@ def getBalances():
 
 def getWithdraws():
     hist = client.get_withdraw_history(status=6, limit=1000)
-    df = pd.DataFrame(hist["withdrawList"])
-    while len(hist["withdrawList"]) > 0:
+    df = pd.DataFrame(hist)
+    while len(hist) > 0:
         hist = client.get_withdraw_history(
             status=6,
             limit=1000,
-            endTime=hist["withdrawList"][-1]["applyTime"] - 1,
+            endTime=int(pd.to_datetime(hist[-1]["applyTime"]).timestamp() - 1)*1000,
         )
-        df = df.append(pd.DataFrame(hist["withdrawList"]))
+        df = df.append(pd.DataFrame(hist))
+    df[['amount', 'transactionFee']] = df[['amount', 'transactionFee']].apply(pd.to_numeric)
     return df
 
 
 def getDusts():
     dusts = client.get_dust_log()
-    df = pd.DataFrame(dusts["results"]["rows"][0]["logs"])
-    # log(dusts["results"]["rows"][0]["logs"]["operateTime"])
+    df = pd.DataFrame(columns=['amount', 'fromAsset', 'operateTime', 'serviceChargeAmount', 'transferedAmount'])
+    for dustTrans in dusts["userAssetDribblets"]:
+        df = df.append(dustTrans['userAssetDribbletDetails'])
     # while len(dusts["results"]["rows"]) > 0:
     #     # TODO Confirm 0 or -1 for earliest time
     #     dusts = client.get_dust_log(
     #         endTime=dusts["results"]["rows"][0]["logs"][0]["operateTime"] - 1
     #     )
     #     df = df.append(pd.DataFrame(dusts))
+    df = df.reset_index()
     df[["amount", "transferedAmount", "serviceChargeAmount"]] = df[
         ["amount", "transferedAmount", "serviceChargeAmount"]
     ].apply(pd.to_numeric)
-    df[["operateTime"]] = df[["operateTime"]].apply(pd.to_datetime)
+    df[["operateTime"]] = df[["operateTime"]].apply(pd.to_datetime, unit='ms')
     return df
 
 
@@ -227,9 +230,9 @@ def main():
 
     print("Withdraws")
     for i, withdraw in getWithdraws().iterrows():
-        price = getPriceAtTime(withdraw["asset"], withdraw["applyTime"], True)
-        portfolio.loc[withdraw["asset"]]["Amount"] -= withdraw["amount"]
-        portfolio.loc[withdraw["asset"]]["USD In"] -= withdraw["amount"] * price
+        price = getPriceAtTime(withdraw["coin"], withdraw["applyTime"], True)
+        portfolio.loc[withdraw["coin"]]["Amount"] -= withdraw["amount"]
+        portfolio.loc[withdraw["coin"]]["USD In"] -= withdraw["amount"] * price
         portfolio.loc["Fees"]["USD In"] += withdraw["transactionFee"]
         portfolio.loc["Withdraws"]["USD In"] += withdraw["amount"] * price
 
