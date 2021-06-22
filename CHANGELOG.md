@@ -8,6 +8,46 @@ Upgrade version:
 Upgrade library dependancies (if required):
 - python3 -m pip install -r requirements.txt -U
 
+## [2.37.2] - 2021-06-21
+
+### Changed
+
+-- Fixed "simstart" bug
+
+## [2.37.1] - 2021-06-18
+
+### Changed
+
+-- Fixed issue from previous release
+
+## [2.37.0] - 2021-06-18
+
+### Changed
+
+-- Refactored the new stats feature into it's own Stats class
+-- Fixed a bug with getOrders() for Coinbase Pro
+-- Fixed the rounding issue with precision greater than 4
+-- Fixed the dummy account which has been broken with a previous PR
+-- Updated unit tests
+
+## [2.31.1] - 2021-06-13
+  
+### Changed
+
+-- Create default config if missing, avoid creating empty config
+
+## [2.31.0] - 2021-06-13
+  
+### Changed
+
+-- Separated strategy into Strategy model for custom strategies
+
+## [2.30.2] - 2021-06-12
+  
+### Changed
+
+-- Minor changes in quote currency extraction (binance.py)
+
 ## [2.30.1] - 2021-06-12
   
 ### Changed

@@ -2,6 +2,7 @@ import pandas as pd
 import argparse
 import json
 import math
+import os
 import random
 import re
 import sys
@@ -53,6 +54,7 @@ def parse_arguments():
     # optional options
     parser.add_argument('--sellatresistance', action="store_true", help="sell at resistance or upper fibonacci band")
     parser.add_argument('--autorestart', action="store_true", help="Auto restart the bot in case of exception")
+    parser.add_argument('--stats', action="store_true", help="display summary of completed trades")
 
     # disable defaults
     parser.add_argument('--disablebullonly', action="store_true", help="disable only buying in bull market")
@@ -95,15 +97,15 @@ def truncate(f: Union[int, float], n: Union[int, float]) -> str:
     if not isinstance(n, int) and not isinstance(n, float):
         return '0.0'
 
-    if (f < 0.001) and n >= 4:
-        return f'{f:.4f}'
+    if (f < 0.0001) and n >= 5:
+        return f'{f:.5f}'
 
     # `{n}` inside the actual format honors the precision
     return f'{math.floor(f * 10 ** n) / 10 ** n:.{n}f}'
 
 
 class PyCryptoBot():
-    def __init__(self, exchange='coinbasepro', filename='config.json'):
+    def __init__(self, exchange='', filename='config.json'):
         args = parse_arguments()
 
         self.api_key = ''
@@ -119,7 +121,20 @@ class PyCryptoBot():
             else:
                 self.exchange = args['exchange']
         else:
-            self.exchange = exchange
+            try:
+                with open(filename) as config_file:
+                    config = json.load(config_file)
+                    if exchange == '' and ('coinbasepro' in config or 'api_pass' in config):
+                        self.exchange = 'coinbasepro'
+                    elif exchange == '' and 'binance' in config:
+                        self.exchange = 'binance'
+                    elif exchange != '' and exchange in ['coinbasepro', 'binance', 'dummy']:
+                        self.exchange = exchange
+                    else:
+                        self.exchange = 'dummy'
+            except:
+                self.exchange = 'dummy'
+                pass
 
         self.market = 'BTC-GBP'
         self.base_currency = 'BTC'
@@ -148,6 +163,7 @@ class PyCryptoBot():
 
         self.sellatresistance = False
         self.autorestart = False
+        self.stats = False
 
         self.disablebullonly = False
         self.disablebuynearhigh = False
@@ -172,7 +188,7 @@ class PyCryptoBot():
         self.ema1226_6h_cache = None
         self.sma50200_1h_cache = None
 
-        if args['init']:
+        if args['init'] or (filename == 'config.json' and not os.path.isfile(filename)):
             # config builder
             cb = ConfigBuilder()
             cb.init()
@@ -182,8 +198,9 @@ class PyCryptoBot():
             with open(filename) as config_file:
                 config = json.load(config_file)
 
-                if exchange not in config and 'binance' in config:
-                    self.exchange = 'binance'
+                # if no exchange specified then dummy
+                #if self.exchange not in config:
+                #    self.exchange = 'dummy'
 
                 if self.exchange == 'coinbasepro' and 'coinbasepro' in config:
                     coinbaseProConfigParser(self, config['coinbasepro'], args)
@@ -290,6 +307,17 @@ class PyCryptoBot():
         except Exception:
             return 'v0.0.0'
 
+    def getInterval(self, df: pd.DataFrame=pd.DataFrame(), iterations: int=0) -> pd.DataFrame:
+        if len(df) == 0:
+            return df
+
+        if self.isSimulation() and iterations > 0:
+            # with a simulation iterate through data
+            return df.iloc[iterations - 1:iterations]
+        else:
+            # most recent entry
+            return df.tail(1)
+
     def printGranularity(self) -> str:
         if self.exchange == 'binance':
             return to_binance_granularity(self.granularity)
@@ -332,12 +360,7 @@ class PyCryptoBot():
             api = BPublicAPI()
 
             if iso8601start != '' and iso8601end != '':
-                return api.getHistoricalData(
-                    market,
-                    to_binance_granularity(granularity),
-                    str(datetime.strptime(iso8601start, '%Y-%m-%dT%H:%M:%S.%f').strftime('%d %b, %Y')),
-                    str(datetime.strptime(iso8601end, '%Y-%m-%dT%H:%M:%S.%f').strftime('%d %b, %Y'))
-                )
+                return api.getHistoricalData(market, to_binance_granularity(granularity), iso8601start, iso8601end)
             else:
                 return api.getHistoricalData(market, to_binance_granularity(granularity))
         else:
@@ -558,6 +581,9 @@ class PyCryptoBot():
 
     def autoRestart(self) -> bool:
         return self.autorestart
+    
+    def getStats(self) -> bool:
+        return self.stats
 
     def getLastAction(self):
         return self.last_action
@@ -841,15 +867,29 @@ class PyCryptoBot():
 
                 attempts = 0
 
-                if self.simstartdate is not None:
+                if self.simstartdate is not None and self.simenddate is not None:
+                    date = self.simstartdate.split('-')
+                    startDate = datetime(int(date[0]), int(date[1]), int(date[2]))
+                    if self.simenddate == 'now':
+                        endDate = datetime.now()
+                    else:
+                        date = self.simenddate.split('-')
+                        endDate = datetime(int(date[0]), int(date[1]), int(date[2]))
+                    while len(tradingData) != 300 and attempts < 10:
+                        tradingData = self.getHistoricalData(self.getMarket(), self.getGranularity(),
+                                                             startDate.isoformat(timespec='milliseconds'),
+                                                             endDate.isoformat(timespec='milliseconds'))
+                        attempts += 1
+                elif self.simstartdate is not None and self.simenddate is None:
                     date = self.simstartdate.split('-')
                     startDate = datetime(int(date[0]), int(date[1]), int(date[2]))
                     endDate = startDate + timedelta(minutes=(self.getGranularity()/60)*300)
                     while len(tradingData) != 300 and attempts < 10:
                         tradingData = self.getHistoricalData(self.getMarket(), self.getGranularity(),
-                                                             startDate.isoformat(timespec='milliseconds'))
+                                                             startDate.isoformat(timespec='milliseconds'),
+                                                             endDate.isoformat(timespec='milliseconds'))
                         attempts += 1
-                elif self.simenddate is not None:
+                elif self.simenddate is not None and self.simstartdate is None:
                     if self.simenddate == 'now':
                         endDate = datetime.now()
                     else:
@@ -858,7 +898,8 @@ class PyCryptoBot():
                     startDate = endDate - timedelta(minutes=(self.getGranularity()/60)*300)
                     while len(tradingData) != 300 and attempts < 10:
                         tradingData = self.getHistoricalData(self.getMarket(), self.getGranularity(),
-                                                             startDate.isoformat(timespec='milliseconds'))
+                                                             startDate.isoformat(timespec='milliseconds'),
+                                                             endDate.isoformat(timespec='milliseconds'))
                         attempts += 1
                 else:
                     while len(tradingData) != 300 and attempts < 10:
