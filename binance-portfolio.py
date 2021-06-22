@@ -170,7 +170,6 @@ def main():
         {key: zeros for key in ["USD In", "Amount"]}, index=allSymbols
     )
 
-    print("Dusts")
     for i, dust in getDusts().iterrows():
         try:
             portfolio.loc[dust["fromAsset"]]
@@ -185,11 +184,9 @@ def main():
         portfolio.loc["BNB"]["USD In"] += dust["transferedAmount"] * bnbPrice
         portfolio.loc["Fees"]["USD In"] += dust["serviceChargeAmount"] * bnbPrice
 
-    print("P2P")
     for i, v in p2p.iterrows():
         portfolio.loc[v["Symbol"]]["USD In"] += v["USD In"]
         portfolio.loc[v["Symbol"]]["Amount"] += v["USD In"] / v["Bought At"]
-    print("Converts")
     for i, v in converts.iterrows():
         portfolio.loc[v["From Symbol"]]["Amount"] -= v["From Amount"]
         portfolio.loc[v["To Symbol"]]["Amount"] += v["To Amount"]
@@ -201,7 +198,6 @@ def main():
             v["To Symbol"], v["Time"], True
         )
 
-    print("Symbols")
     for symbol in portfolio.index:
         if symbol in extraRows or symbol == "USDT":
             continue
