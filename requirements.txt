@@ -9,3 +9,4 @@ mock==4.0.3
 pytest==6.2.2
 pytest-mock==3.6.1
 mezmorize
+py3cw

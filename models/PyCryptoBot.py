@@ -216,15 +216,19 @@ class PyCryptoBot():
                     self._chat_client = Telegram(telegram['token'], telegram['client_id'])
                     self.telegram = True
 
+                if "3commas" in config:
+                    self.tc_key = config["3commas"]['api_key']
+                    self.tc_secret = config["3commas"]['api_secret']
+
                 if 'logger' in config:
                     loggerConfigParser(self, config['logger'])
-                
+
                 if self.disablelog:
                     self.filelog = 0
                     self.fileloglevel = 'NOTSET'
                     self.logfile == "pycryptobot.log"
 
-                Logger.configure(filelog=self.filelog, logfile=self.logfile, fileloglevel=self.fileloglevel, consolelog=self.consolelog, consoleloglevel=self.consoleloglevel)     
+                Logger.configure(filelog=self.filelog, logfile=self.logfile, fileloglevel=self.fileloglevel, consolelog=self.consolelog, consoleloglevel=self.consoleloglevel)
 
         except json.decoder.JSONDecodeError as err:
             sys.tracebacklimit = 0
@@ -388,7 +392,7 @@ class PyCryptoBot():
 
         if 'date'in result_df:
             result_df.sort_values(by=['date'], ascending=True, inplace=True)
-        
+
         return result_df
 
     def getSmartSwitch(self):
@@ -416,7 +420,7 @@ class PyCryptoBot():
 
             if 'ema26' not in df_data:
                 ta.addEMA(26)
-            
+
             df_last = ta.getDataFrame().copy().iloc[-1,:]
             df_last['bull'] = df_last['ema12'] > df_last['ema26']
             return bool(df_last['bull'])
@@ -439,10 +443,10 @@ class PyCryptoBot():
                 return False
 
             ta = TechnicalAnalysis(df_data)
-            
+
             if 'sma50' not in df_data:
                 ta.addSMA(50)
-            
+
             if 'sma200' not in df_data:
                 ta.addSMA(200)
 
@@ -581,7 +585,7 @@ class PyCryptoBot():
 
     def autoRestart(self) -> bool:
         return self.autorestart
-    
+
     def getStats(self) -> bool:
         return self.stats
 
