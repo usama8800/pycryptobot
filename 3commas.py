@@ -86,8 +86,14 @@ def main():
     resp = p3cw.request(entity="bots", action="")
     bots = pd.DataFrame(resp[1])
     bots = bots[bots["name"] == "Trade Alts"]
-    # bots = bots[["id", "pairs", "name"]]
     bots = bots.reset_index()
+    bots[
+        ["base_order_volume", "safety_order_volume", "martingale_volume_coefficient"]
+    ] = bots[
+        ["base_order_volume", "safety_order_volume", "martingale_volume_coefficient"]
+    ].apply(
+        pd.to_numeric
+    )
     bot = bots.loc[0]
 
     balances = getBalances()
@@ -95,35 +101,62 @@ def main():
     pair: str = bot["pairs"][0]
     base = pair[: pair.index("_")]
     quote = pair[pair.index("_") + 1 :]
-    quote = 'DOGE'
     symbol = quote + base
 
     totalUSDT = (
         balances[balances["asset"] == base]["total"].values[0]
-        + getPriceAtTime(symbol) * balances[balances["asset"] == quote]["total"].values[0]
+        + getPriceAtTime(symbol)
+        * balances[balances["asset"] == quote]["total"].values[0]
     )
     print(totalUSDT)
     totalUSDT -= 1
 
-    baseOrder, safetyOrderSize, maxSafetyOrders, safetyOrderDeviation, neededUSDT = getBestBotSettings(totalUSDT)
-    resp = p3cw.request(entity="bots", action="update", action_id=str(bot['id']), payload={
-        'name': bot['name'],
-        'pairs': bot['pairs'],
-        'max_active_deals': 1,
-        'base_order_volume': baseOrder,
-        'take_profit': bot['take_profit'],
-        'safety_order_volume': safetyOrderSize,
-        'martingale_volume_coefficient': safetyOrderDeviation,
-        'martingale_step_coefficient': 1,
-        'max_safety_orders': maxSafetyOrders,
-        'active_safety_orders_count': 1,
-        'safety_order_step_percentage': bot['safety_order_step_percentage'],
-        'take_profit_type': bot['take_profit_type'],
-        'strategy_list': bot['strategy_list'],
-        'bot_id': int(bot['id'])
-    })
+    (
+        baseOrder,
+        safetyOrderSize,
+        maxSafetyOrders,
+        safetyOrderDeviation,
+        neededUSDT,
+    ) = getBestBotSettings(totalUSDT)
+    if (
+        abs(bot["base_order_volume"] - baseOrder) < 1
+        and abs(bot["safety_order_volume"] - safetyOrderSize) < 0.1
+        and abs(bot["martingale_volume_coefficient"] - safetyOrderDeviation) < 0.1
+        and abs(bot["max_safety_orders"] - maxSafetyOrders) < 1
+    ):
+        return
+    resp = p3cw.request(
+        entity="bots",
+        action="update",
+        action_id=str(bot["id"]),
+        payload={
+            "name": bot["name"],
+            "pairs": bot["pairs"],
+            "max_active_deals": 1,
+            "base_order_volume": baseOrder,
+            "take_profit": bot["take_profit"],
+            "safety_order_volume": safetyOrderSize,
+            "martingale_volume_coefficient": safetyOrderDeviation,
+            "martingale_step_coefficient": 1,
+            "max_safety_orders": maxSafetyOrders,
+            "active_safety_orders_count": 1,
+            "safety_order_step_percentage": bot["safety_order_step_percentage"],
+            "take_profit_type": bot["take_profit_type"],
+            "strategy_list": bot["strategy_list"],
+            "bot_id": int(bot["id"]),
+        },
+    )
     if len(resp[0].keys()) == 0:
-        print('Success')
+        print("Success")
+        app.notifyTelegram(
+            f"""* Bot "{bot['name']}" updated*
+```
+Base Order:             {baseOrder}
+Safety Order Size:      {safetyOrderSize:.2f}
+Safety Order Variation: {safetyOrderDeviation:.2f}
+Max Safety Order:       {maxSafetyOrders}
+Using $:                {neededUSDT:.2f} / {totalUSDT:.2f}
+```""", False)
 
 
 if __name__ == "__main__":

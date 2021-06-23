@@ -19,9 +19,9 @@ class Telegram():
 
         #print('Telegram configure with for client "' + client_id + '" with token "' + token + '"')
 
-    def send(self, message='') -> str:
+    def send(self, message='', translate=True) -> str:
         try:
-            escaped_message = message.translate(message.maketrans({"*":  r"\*"}))
+            escaped_message = message.translate(message.maketrans({"*":  r"\*"})) if translate else message
             payload = self.api + self._token + '/sendMessage?chat_id=' + self._client_id + '&parse_mode=Markdown&text=' + escaped_message
             resp = get(payload)
 

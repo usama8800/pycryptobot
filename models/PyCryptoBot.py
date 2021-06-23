@@ -936,7 +936,7 @@ class PyCryptoBot():
 
             return tradingData
 
-    def notifyTelegram(self, msg: str) -> None:
+    def notifyTelegram(self, msg: str, translate=True) -> None:
         """
         Send a given message to preconfigured Telegram. If the telegram isn't enabled, e.g. via `--disabletelegram`,
         this method does nothing and returns immediately.
@@ -947,4 +947,4 @@ class PyCryptoBot():
 
         assert self._chat_client is not None
 
-        self._chat_client.send(msg)
+        self._chat_client.send(msg, translate)
