@@ -60,5 +60,12 @@
         "Bought At": 1.050,
         "USD In": 525.04,
         "PKR In": 81250
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "2021-06-27 8:52 PM",
+        "Bought At": 1.038,
+        "USD In": 500,
+        "PKR In": 82000
     }
 ]

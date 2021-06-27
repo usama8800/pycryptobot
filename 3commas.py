@@ -1,3 +1,4 @@
+import sys
 import time
 from datetime import datetime
 
@@ -10,11 +11,6 @@ from py3cw.request import Py3CW
 
 from models.PyCryptoBot import PyCryptoBot
 
-# pd.set_option(
-#     "display.float_format",
-#     lambda x: ("%.0f" if int(x) == x else "%0.0f" if abs(x) < 0.0001 else "%.4f")
-#     % (-x if -0.0001 <= x < 0 else x),
-# )
 app = PyCryptoBot()
 client = Client(app.getAPIKey(), app.getAPISecret(), {"verify": False, "timeout": 20})
 p3cw = Py3CW(
@@ -82,10 +78,10 @@ def getBestBotSettings(usdt, maxSafetyOrders=15):
     return bestSettings
 
 
-def main():
+def main(live=False, totalUSDT=None):
     resp = p3cw.request(entity="bots", action="")
     bots = pd.DataFrame(resp[1])
-    bots = bots[bots["name"] == "Trade Alts"]
+    bots = bots[bots["name"] == "TA_DOGE"]
     bots = bots.reset_index()
     bots[
         ["base_order_volume", "safety_order_volume", "martingale_volume_coefficient"]
@@ -96,20 +92,19 @@ def main():
     )
     bot = bots.loc[0]
 
-    balances = getBalances()
+    if totalUSDT is None:
+        balances = getBalances()
 
-    pair: str = bot["pairs"][0]
-    base = pair[: pair.index("_")]
-    quote = pair[pair.index("_") + 1 :]
-    symbol = quote + base
+        pair: str = bot["pairs"][0]
+        base = pair[: pair.index("_")]
+        quote = pair[pair.index("_") + 1 :]
+        symbol = quote + base
 
-    totalUSDT = (
-        balances[balances["asset"] == base]["total"].values[0]
-        + getPriceAtTime(symbol)
-        * balances[balances["asset"] == quote]["total"].values[0]
-    )
-    print(totalUSDT)
-    totalUSDT -= 1
+        baseBalance = balances[balances["asset"] == base]["total"].values[0]
+        quoteBalance = balances[balances["asset"] == quote]["total"].values[0]
+        totalUSDT = (baseBalance + getPriceAtTime(symbol) * quoteBalance)
+        print(totalUSDT)
+        totalUSDT -= 1
 
     (
         baseOrder,
@@ -118,13 +113,23 @@ def main():
         safetyOrderDeviation,
         neededUSDT,
     ) = getBestBotSettings(totalUSDT)
+
+    print(f"""Bot "{bot['name']}" settings
+Base Order:             {baseOrder}
+Safety Order Size:      {safetyOrderSize:.2f}
+Safety Order Variation: {safetyOrderDeviation:.2f}
+Max Safety Order:       {maxSafetyOrders}
+Using $:                {neededUSDT:.2f} / {totalUSDT:.2f}""")
+
     if (
         abs(bot["base_order_volume"] - baseOrder) < 1
         and abs(bot["safety_order_volume"] - safetyOrderSize) < 0.1
         and abs(bot["martingale_volume_coefficient"] - safetyOrderDeviation) < 0.1
         and abs(bot["max_safety_orders"] - maxSafetyOrders) < 1
+        or not live
     ):
         return
+    return
     resp = p3cw.request(
         entity="bots",
         action="update",
@@ -160,4 +165,12 @@ Using $:                {neededUSDT:.2f} / {totalUSDT:.2f}
 
 
 if __name__ == "__main__":
-    main()
+    args = sys.argv[1:]
+    live = False
+    usdt = None
+    for arg in args:
+        if arg.startswith('--live'):
+            live=int(arg[7:])==1
+        elif arg.startswith('--usdt'):
+            usdt=int(arg[7:], 10)
+    main(live, usdt)
