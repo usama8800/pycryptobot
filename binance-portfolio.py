@@ -5,6 +5,7 @@ from datetime import datetime
 
 import mezmorize
 import numpy as np
+import math
 import pandas as pd
 from binance.client import BinanceAPIException, Client
 from pandas.core.frame import DataFrame
@@ -13,7 +14,7 @@ from models.PyCryptoBot import PyCryptoBot
 
 pd.set_option(
     "display.float_format",
-    lambda x: ("%.0f" if int(x) == x else "%0.0f" if abs(x) < 0.0001 else "%.4f")
+    lambda x: x if math.isnan(x) else ("%.0f" if int(x) == x else "%0.0f" if abs(x) < 0.0001 else "%.4f")
     % (-x if -0.0001 <= x < 0 else x),
 )
 app = PyCryptoBot()
@@ -30,7 +31,7 @@ logging.basicConfig(
     encoding="utf-8",
 )
 try:
-    with open("./portfolio-data/prices.json", "r") as openfile:
+    with open("./portfolio-data/history/prices.json", "r") as openfile:
         prices = json.load(openfile)
 except FileNotFoundError:
     prices = {}
@@ -72,7 +73,7 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000, save=False):
     if len(res) == 0:
         log(f"{symbol} {endTime} {res}", error=False)
     if save:
-        log(f"Saving price for {symbol} at {endTime}")
+        # log(f"Saving price for {symbol} at {endTime}")
         if not symbol in prices:
             prices[symbol] = {}
         prices[symbol][str(endTime)] = float(res[0][4])
@@ -80,20 +81,26 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000, save=False):
 
 
 def getAllOrders(symbol: str) -> DataFrame:
-    while True:
-        try:
-            resp = client.get_all_orders(symbol=symbol + "USDT", limit=1000)
-        except BinanceAPIException as e:
-            print(e)
-            time.sleep(3)
-            continue
-        break
-    df = pd.DataFrame(resp)
-    while len(resp) > 0:
+    resp = None
+    try:
+        df = pd.read_json(f"./portfolio-data/history/{symbol}.json")
+    except:
+        df = pd.DataFrame()
+    if len(df) == 0:
+        while True:
+            try:
+                resp = client.get_all_orders(symbol=symbol + "USDT", limit=1000)
+            except BinanceAPIException as e:
+                print(e)
+                time.sleep(3)
+                continue
+            break
+        df = pd.DataFrame(resp)
+    while resp is None or len(resp) > 0:
         while True:
             try:
                 resp = client.get_all_orders(
-                    symbol=symbol + "USDT", endTime=resp[0]["time"] - 1, limit=1000
+                    symbol=symbol + "USDT", endTime=df.loc[0]["time"] - 1, limit=1000
                 )
             except BinanceAPIException as e:
                 print(e)
@@ -101,14 +108,19 @@ def getAllOrders(symbol: str) -> DataFrame:
                 continue
             break
         df = df.append(pd.DataFrame(resp))
+        df.sort_values(by=['time'], inplace=True)
+        df.reset_index(inplace=True, drop=True)
     if len(df) == 0:
         return df
 
-    df = df[["executedQty", "cummulativeQuoteQty", "side", "updateTime"]]
+
+    df = df[["executedQty", "cummulativeQuoteQty", "side", "updateTime", "time"]]
     df[["executedQty", "cummulativeQuoteQty"]] = df[
         ["executedQty", "cummulativeQuoteQty"]
     ].apply(pd.to_numeric)
     df = df[df["cummulativeQuoteQty"] > 0]
+    df.reset_index(inplace=True, drop=True)
+    df.to_json(f"./portfolio-data/history/{symbol}.json")
     return df
 
 
@@ -121,32 +133,47 @@ def getBalances():
 
 
 def getWithdraws():
-    hist = client.get_withdraw_history(status=6, limit=1000)
-    df = pd.DataFrame(hist)
-    while len(hist) > 0:
+    hist = None
+    try:
+        df = pd.read_json(f"./portfolio-data/history/withdraws.json")
+    except:
+        df = pd.DataFrame()
+    if len(df) == 0:
+        hist = client.get_withdraw_history(status=6, limit=1000)
+        df = pd.DataFrame(hist)
+    while hist is None or len(hist) > 0:
         hist = client.get_withdraw_history(
             status=6,
             limit=1000,
-            endTime=int(pd.to_datetime(hist[-1]["applyTime"]).timestamp() - 1) * 1000,
+            endTime=int(pd.to_datetime(df.loc[0]["applyTime"]).timestamp() - 1) * 1000,
         )
         df = df.append(pd.DataFrame(hist))
+        df.sort_values(by='applyTime', inplace=True)
+        df.reset_index(drop=True, inplace=True)
     df[["amount", "transactionFee"]] = df[["amount", "transactionFee"]].apply(
         pd.to_numeric
     )
+    df.to_json(f"./portfolio-data/history/withdraws.json")
     return df
 
 
 def getDusts():
-    dusts = client.get_dust_log()
-    df = pd.DataFrame(
-        columns=[
-            "amount",
-            "fromAsset",
-            "operateTime",
-            "serviceChargeAmount",
-            "transferedAmount",
-        ]
-    )
+    dusts = None
+    try:
+        df = pd.read_json(f"./portfolio-data/history/dusts.json")
+    except:
+        df = pd.DataFrame()
+    if len(df) == 0:
+        dusts = client.get_dust_log()
+        df = pd.DataFrame(
+            columns=[
+                "amount",
+                "fromAsset",
+                "operateTime",
+                "serviceChargeAmount",
+                "transferedAmount",
+            ]
+        )
     for dustTrans in dusts["userAssetDribblets"]:
         df = df.append(dustTrans["userAssetDribbletDetails"])
     # while len(dusts["results"]["rows"]) > 0:
@@ -160,6 +187,7 @@ def getDusts():
         ["amount", "transferedAmount", "serviceChargeAmount"]
     ].apply(pd.to_numeric)
     df[["operateTime"]] = df[["operateTime"]].apply(pd.to_datetime, unit="ms")
+    df.to_json(f"./portfolio-data/history/dusts.json")
     return df
 
 
@@ -248,7 +276,6 @@ def main():
                 / getPriceAtTime("BNB", v["updateTime"], True)
             )
 
-    print("Withdraws")
     for i, withdraw in getWithdraws().iterrows():
         price = getPriceAtTime(withdraw["coin"], withdraw["applyTime"], True)
         portfolio.loc[withdraw["coin"]]["Amount"] -= withdraw["amount"]
@@ -282,7 +309,7 @@ def main():
     )
 
     json_object = json.dumps(prices, indent=4)
-    with open("./portfolio-data/prices.json", "w") as outfile:
+    with open("./portfolio-data/history/prices.json", "w+") as outfile:
         outfile.write(json_object)
 
 
