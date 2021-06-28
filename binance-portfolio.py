@@ -1,12 +1,12 @@
+import json
 import logging
 import time
 from datetime import datetime
-import json
 
 import mezmorize
 import numpy as np
 import pandas as pd
-from binance.client import Client
+from binance.client import BinanceAPIException, Client
 from pandas.core.frame import DataFrame
 
 from models.PyCryptoBot import PyCryptoBot
@@ -72,7 +72,7 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000, save=False):
     if len(res) == 0:
         log(f"{symbol} {endTime} {res}", error=False)
     if save:
-        log(f'Saving price for {symbol} at {endTime}')
+        log(f"Saving price for {symbol} at {endTime}")
         if not symbol in prices:
             prices[symbol] = {}
         prices[symbol][str(endTime)] = float(res[0][4])
@@ -80,12 +80,26 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000, save=False):
 
 
 def getAllOrders(symbol: str) -> DataFrame:
-    resp = client.get_all_orders(symbol=symbol + "USDT", limit=1000)
+    while True:
+        try:
+            resp = client.get_all_orders(symbol=symbol + "USDT", limit=1000)
+        except BinanceAPIException as e:
+            print(e)
+            time.sleep(3)
+            continue
+        break
     df = pd.DataFrame(resp)
     while len(resp) > 0:
-        resp = client.get_all_orders(
-            symbol=symbol + "USDT", endTime=resp[0]["time"] - 1, limit=1000
-        )
+        while True:
+            try:
+                resp = client.get_all_orders(
+                    symbol=symbol + "USDT", endTime=resp[0]["time"] - 1, limit=1000
+                )
+            except BinanceAPIException as e:
+                print(e)
+                time.sleep(3)
+                continue
+            break
         df = df.append(pd.DataFrame(resp))
     if len(df) == 0:
         return df
@@ -113,18 +127,28 @@ def getWithdraws():
         hist = client.get_withdraw_history(
             status=6,
             limit=1000,
-            endTime=int(pd.to_datetime(hist[-1]["applyTime"]).timestamp() - 1)*1000,
+            endTime=int(pd.to_datetime(hist[-1]["applyTime"]).timestamp() - 1) * 1000,
         )
         df = df.append(pd.DataFrame(hist))
-    df[['amount', 'transactionFee']] = df[['amount', 'transactionFee']].apply(pd.to_numeric)
+    df[["amount", "transactionFee"]] = df[["amount", "transactionFee"]].apply(
+        pd.to_numeric
+    )
     return df
 
 
 def getDusts():
     dusts = client.get_dust_log()
-    df = pd.DataFrame(columns=['amount', 'fromAsset', 'operateTime', 'serviceChargeAmount', 'transferedAmount'])
+    df = pd.DataFrame(
+        columns=[
+            "amount",
+            "fromAsset",
+            "operateTime",
+            "serviceChargeAmount",
+            "transferedAmount",
+        ]
+    )
     for dustTrans in dusts["userAssetDribblets"]:
-        df = df.append(dustTrans['userAssetDribbletDetails'])
+        df = df.append(dustTrans["userAssetDribbletDetails"])
     # while len(dusts["results"]["rows"]) > 0:
     #     # TODO Confirm 0 or -1 for earliest time
     #     dusts = client.get_dust_log(
@@ -135,7 +159,7 @@ def getDusts():
     df[["amount", "transferedAmount", "serviceChargeAmount"]] = df[
         ["amount", "transferedAmount", "serviceChargeAmount"]
     ].apply(pd.to_numeric)
-    df[["operateTime"]] = df[["operateTime"]].apply(pd.to_datetime, unit='ms')
+    df[["operateTime"]] = df[["operateTime"]].apply(pd.to_datetime, unit="ms")
     return df
 
 
