@@ -4,11 +4,15 @@ import numpy as np
 import pandas as pd
 from binance.client import Client
 
-from models.exchange.coinbase_pro.api import (FREQUENCY_EQUIVALENTS,
-                                              SUPPORTED_GRANULARITY)
+from models.exchange.coinbase_pro.api import (
+    FREQUENCY_EQUIVALENTS,
+    SUPPORTED_GRANULARITY,
+)
 from models.PyCryptoBot import PyCryptoBot, to_binance_granularity
 
-market = "DOGEUSDT"
+baseCoin = "DOGE"
+quoteCoin = "USDT"
+market = baseCoin + quoteCoin
 baseOrderVolume = 10
 firstSafetyOrderVolume = 22.5
 safetyOrderPriceDeviation = 0.98
@@ -23,7 +27,10 @@ client = Client(app.getAPIKey(), app.getAPISecret(), {"verify": False, "timeout"
 def main():
     tradingData = getTradingData()
     originalFunds = getNeededUSDTFromSettings(
-        baseOrderVolume, firstSafetyOrderVolume, maxSafetyOrders, safetyOrderVolumeDeviation
+        baseOrderVolume,
+        firstSafetyOrderVolume,
+        maxSafetyOrders,
+        safetyOrderVolumeDeviation,
     )
     funds = originalFunds
     coin = 0
@@ -31,34 +38,48 @@ def main():
     currentBuyPrices = []
     nextSafetyOrderPrice = 0
     takeProfitOrderPrice = 0
+    fundsBeforeBaseOrder = funds
     for _, row in tradingData.iterrows():
-        print(_)
-        if len(currentBuyPrices) == 0: # First row
-            coin = baseOrderVolume / row['open']
+        if len(currentBuyPrices) == 0:  # First row
+            coin = baseOrderVolume / row["open"]
             funds -= baseOrderVolume
-            currentBuyPrices = [row['open']]
-            avgBuyPrice = row['open']
-            nextSafetyOrderPrice = row['open'] * safetyOrderPriceDeviation
+            print(
+                f"{_}: Base order {coin} {baseCoin} for {baseOrderVolume} {quoteCoin}"
+            )
+            currentBuyPrices = [row["open"]]
+            avgBuyPrice = row["open"]
+            nextSafetyOrderPrice = row["open"] * safetyOrderPriceDeviation
             nextSafetyOrderVolume = firstSafetyOrderVolume
             takeProfitOrderPrice = avgBuyPrice * takeProfitPercentage
-        if row['low'] <= nextSafetyOrderPrice:
+        if row["low"] <= nextSafetyOrderPrice:
             coin += nextSafetyOrderVolume / nextSafetyOrderPrice
             funds -= nextSafetyOrderVolume
+            print(
+                f"{_}: Safety order {nextSafetyOrderVolume / nextSafetyOrderPrice} {baseCoin} for {nextSafetyOrderVolume} {quoteCoin}"
+            )
             currentBuyPrices.append(nextSafetyOrderPrice)
-            avgBuyPrice = sum(currentBuyPrices)/len(currentBuyPrices)
+            avgBuyPrice = sum(currentBuyPrices) / len(currentBuyPrices)
             nextSafetyOrderPrice *= safetyOrderPriceDeviation
             nextSafetyOrderVolume *= safetyOrderVolumeDeviation
             takeProfitOrderPrice = avgBuyPrice * takeProfitPercentage
-        if row['high'] >= takeProfitOrderPrice:
+        if row["high"] >= takeProfitOrderPrice:
             funds += coin * takeProfitOrderPrice
-            coin = baseOrderVolume / takeProfitOrderPrice
+            print(f"{_}: Take profit {funds-fundsBeforeBaseOrder} {quoteCoin}")
+            fundsBeforeBaseOrder = funds
             funds -= baseOrderVolume
+            coin = baseOrderVolume / takeProfitOrderPrice
+            print(
+                f"{_}: Base order {coin} {baseCoin} for {baseOrderVolume} {quoteCoin}"
+            )
             currentBuyPrices = [takeProfitOrderPrice]
             avgBuyPrice = takeProfitOrderPrice
             nextSafetyOrderPrice = takeProfitOrderPrice * safetyOrderPriceDeviation
             nextSafetyOrderVolume = firstSafetyOrderVolume
             takeProfitOrderPrice = avgBuyPrice * takeProfitPercentage
-    print(funds, coin, funds+coin*row['close'])
+    endFunds = fundsBeforeBaseOrder
+    print(
+        f"{endFunds:.2f} - {originalFunds:.2f} = {endFunds-originalFunds:+.2f} {quoteCoin}"
+    )
 
 
 def getNeededUSDTFromSettings(
@@ -91,6 +112,8 @@ def getTradingData():
             date = app.simenddate.split("-")
             endDate = datetime(int(date[0]), int(date[1]), int(date[2]))
         startDate = endDate - timedelta(minutes=(app.getGranularity() / 60) * 300)
+    else:
+        raise KeyError("Set start and end date")
 
     granularity = to_binance_granularity(app.getGranularity())
     resp = client.get_historical_klines(
