@@ -1,12 +1,9 @@
 import sys
 import time
-from datetime import datetime
 
-import mezmorize
 import numpy as np
 import pandas as pd
 from binance.client import Client
-from pandas.core.frame import DataFrame
 from py3cw.request import Py3CW
 
 from models.PyCryptoBot import PyCryptoBot
@@ -102,7 +99,7 @@ def main(live=False, totalUSDT=None):
 
         baseBalance = balances[balances["asset"] == base]["total"].values[0]
         quoteBalance = balances[balances["asset"] == quote]["total"].values[0]
-        totalUSDT = (baseBalance + getPriceAtTime(symbol) * quoteBalance)
+        totalUSDT = baseBalance + getPriceAtTime(symbol) * quoteBalance
         print(totalUSDT)
         totalUSDT -= 1
 
@@ -114,12 +111,14 @@ def main(live=False, totalUSDT=None):
         neededUSDT,
     ) = getBestBotSettings(totalUSDT)
 
-    print(f"""Bot "{bot['name']}" settings
+    print(
+        f"""Bot "{bot['name']}" settings
 Base Order:             {baseOrder}
 Safety Order Size:      {safetyOrderSize:.2f}
 Safety Order Variation: {safetyOrderDeviation:.2f}
 Max Safety Order:       {maxSafetyOrders}
-Using $:                {neededUSDT:.2f} / {totalUSDT:.2f}""")
+Using $:                {neededUSDT:.2f} / {totalUSDT:.2f}"""
+    )
 
     if (
         abs(bot["base_order_volume"] - baseOrder) < 1
@@ -161,7 +160,9 @@ Safety Order Size:      {safetyOrderSize:.2f}
 Safety Order Variation: {safetyOrderDeviation:.2f}
 Max Safety Order:       {maxSafetyOrders}
 Using $:                {neededUSDT:.2f} / {totalUSDT:.2f}
-```""", False)
+```""",
+            False,
+        )
 
 
 if __name__ == "__main__":
@@ -169,8 +170,8 @@ if __name__ == "__main__":
     live = False
     usdt = None
     for arg in args:
-        if arg.startswith('--live'):
-            live=int(arg[7:])==1
-        elif arg.startswith('--usdt'):
-            usdt=int(arg[7:], 10)
+        if arg.startswith("--live"):
+            live = int(arg[7:]) == 1
+        elif arg.startswith("--usdt"):
+            usdt = int(arg[7:], 10)
     main(live, usdt)
