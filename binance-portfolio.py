@@ -159,21 +159,21 @@ def getWithdraws():
 
 def getDusts():
     dusts = None
-    try:
-        df = pd.read_json(f"./portfolio-data/history/dusts.json")
-    except:
-        df = pd.DataFrame()
-    if len(df) == 0:
-        dusts = client.get_dust_log()
-        df = pd.DataFrame(
-            columns=[
-                "amount",
-                "fromAsset",
-                "operateTime",
-                "serviceChargeAmount",
-                "transferedAmount",
-            ]
-        )
+    # try:
+    #     df = pd.read_json(f"./portfolio-data/history/dusts.json")
+    # except:
+    #     df = pd.DataFrame()
+    # if len(df) == 0:
+    dusts = client.get_dust_log()
+    df = pd.DataFrame(
+        columns=[
+            "amount",
+            "fromAsset",
+            "operateTime",
+            "serviceChargeAmount",
+            "transferedAmount",
+        ]
+    )
     for dustTrans in dusts["userAssetDribblets"]:
         df = df.append(dustTrans["userAssetDribbletDetails"])
     # while len(dusts["results"]["rows"]) > 0:
@@ -187,7 +187,7 @@ def getDusts():
         ["amount", "transferedAmount", "serviceChargeAmount"]
     ].apply(pd.to_numeric)
     df[["operateTime"]] = df[["operateTime"]].apply(pd.to_datetime, unit="ms")
-    df.to_json(f"./portfolio-data/history/dusts.json")
+    # df.to_json(f"./portfolio-data/history/dusts.json")
     return df
 
 
