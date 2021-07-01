@@ -78,7 +78,7 @@ def getBestBotSettings(usdt, maxSafetyOrders=15):
 def main(live=False, totalUSDT=None):
     resp = p3cw.request(entity="bots", action="")
     bots = pd.DataFrame(resp[1])
-    bots = bots[bots["name"] == "TA_DOGE"]
+    bots = bots[bots["name"] == "TA_COMPOSITE"]
     bots = bots.reset_index()
     bots[
         ["base_order_volume", "safety_order_volume", "martingale_volume_coefficient"]
@@ -88,20 +88,21 @@ def main(live=False, totalUSDT=None):
         pd.to_numeric
     )
     bot = bots.loc[0]
+    divideInto = len(bot['pairs']) + 2
 
     if totalUSDT is None:
         balances = getBalances()
+        totalUSDT = 0
+        resp = p3cw.request(
+            entity="deals", action="", payload={"bot_id": bot["id"], "scope": "active"}
+        )
+        deals = pd.DataFrame(resp[1])
+        deals = deals[["pair", "bought_amount", "bought_volume"]]
 
-        pair: str = bot["pairs"][0]
-        base = pair[: pair.index("_")]
-        quote = pair[pair.index("_") + 1 :]
-        symbol = quote + base
+        for pair in bot["pairs"]:
+            totalUSDT += float(deals[deals["pair"] == pair]["bought_volume"].values[0])
 
-        baseBalance = balances[balances["asset"] == base]["total"].values[0]
-        quoteBalance = balances[balances["asset"] == quote]["total"].values[0]
-        totalUSDT = baseBalance + getPriceAtTime(symbol) * quoteBalance
-        print(totalUSDT)
-        totalUSDT -= 1
+        totalUSDT += balances[balances["asset"] == "USDT"]["total"].values[0]
 
     (
         baseOrder,
@@ -109,7 +110,10 @@ def main(live=False, totalUSDT=None):
         maxSafetyOrders,
         safetyOrderDeviation,
         neededUSDT,
-    ) = getBestBotSettings(totalUSDT)
+    ) = getBestBotSettings(totalUSDT / divideInto, bot["max_safety_orders"])
+    if baseOrder == 0:
+        print('Unfeasable')
+        return
 
     print(
         f"""Bot "{bot['name']}" settings
@@ -117,7 +121,7 @@ Base Order:             {baseOrder}
 Safety Order Size:      {safetyOrderSize:.2f}
 Safety Order Variation: {safetyOrderDeviation:.2f}
 Max Safety Order:       {maxSafetyOrders}
-Using $:                {neededUSDT:.2f} / {totalUSDT:.2f}"""
+Using $:                {neededUSDT*divideInto:.2f} / {totalUSDT:.2f}"""
     )
 
     if (
