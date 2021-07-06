@@ -1,3 +1,4 @@
+import math
 import sys
 import time
 
@@ -45,13 +46,74 @@ def getBalances():
 
 
 def getNeededUSDTFromSettings(
-    baseOrder, safetyOrderSize, maxSafetyOrders, safetyOrderDeviation
+    baseOrder, safetyOrderSize, maxSafetyOrders, safetyOrderVolumeDeviation
 ):
     needed = baseOrder + safetyOrderSize
     for i in range(1, maxSafetyOrders):
-        safetyOrderSize *= safetyOrderDeviation
+        safetyOrderSize *= safetyOrderVolumeDeviation
         needed += safetyOrderSize
     return needed
+
+
+def printSafetys(
+    baseOrder,
+    safetyOrderSize,
+    maxSafetyOrders,
+    safetyOrderVolumeDeviation,
+    safetyOrderPriceDeviation,
+    takeProfit,
+):
+    originalPrice = 0.70009
+    currentPrice = originalPrice
+    buyPrices = [currentPrice]
+    avgBuyPrice = currentPrice
+    needed = baseOrder + safetyOrderSize
+    buyVolumes = [baseOrder]
+    df = pd.DataFrame(
+        {
+            # "Order": pd.Series([], dtype='str'),
+            "Price": pd.Series([], dtype="float"),
+            "Volume": pd.Series([], dtype="float"),
+            "Avg Price": pd.Series([], dtype="float"),
+            "TP Price": pd.Series([], dtype="float"),
+            "TP %": pd.Series([], dtype="float"),
+        }
+    )
+    df.loc[0] = [
+        # "Base Order",
+        currentPrice,
+        baseOrder,
+        avgBuyPrice,
+        avgBuyPrice * (1 + takeProfit / 100),
+        (avgBuyPrice * (1 + takeProfit / 100) - originalPrice) / originalPrice * 100,
+    ]
+    # print(
+    #     f"Base Order:\t\t{(avgBuyPrice*(1+takeProfit/100)-originalPrice)/originalPrice*100:+.1f}%"
+    # )
+    for i in range(maxSafetyOrders):
+        if i != 0:
+            safetyOrderSize *= safetyOrderVolumeDeviation
+            needed += safetyOrderSize
+        currentPrice *= 1 - safetyOrderPriceDeviation / 100
+        buyPrices.append(currentPrice)
+        buyVolumes.append(safetyOrderSize)
+        avgBuyPrice = sum([v * w for v, w in zip(buyPrices, buyVolumes)]) / sum(
+            buyVolumes
+        )
+        # print(
+        #     f"Safety Order {i+1:2d}:\t{(avgBuyPrice*(1+takeProfit/100)-originalPrice)/originalPrice*100:+.1f}%"
+        # )
+        df.loc[i + 1] = [
+            # f"Safety Order {i+1:2d}",
+            currentPrice,
+            safetyOrderSize,
+            avgBuyPrice,
+            avgBuyPrice * (1 + takeProfit / 100),
+            (avgBuyPrice * (1 + takeProfit / 100) - originalPrice)
+            / originalPrice
+            * 100,
+        ]
+    print(df)
 
 
 def getBestBotSettings(usdt, maxSafetyOrders=15):
@@ -75,20 +137,43 @@ def getBestBotSettings(usdt, maxSafetyOrders=15):
     return bestSettings
 
 
-def main(live=False, totalUSDT=None):
+def main(live=False, totalUSDT=None, safetys=False):
     resp = p3cw.request(entity="bots", action="")
     bots = pd.DataFrame(resp[1])
     bots = bots[bots["name"] == "TA_COMPOSITE"]
     bots = bots.reset_index()
     bots[
-        ["base_order_volume", "safety_order_volume", "martingale_volume_coefficient"]
+        [
+            "base_order_volume",
+            "safety_order_volume",
+            "martingale_volume_coefficient",
+            "safety_order_step_percentage",
+            "take_profit",
+        ]
     ] = bots[
-        ["base_order_volume", "safety_order_volume", "martingale_volume_coefficient"]
+        [
+            "base_order_volume",
+            "safety_order_volume",
+            "martingale_volume_coefficient",
+            "safety_order_step_percentage",
+            "take_profit",
+        ]
     ].apply(
         pd.to_numeric
     )
     bot = bots.loc[0]
-    divideInto = len(bot['pairs']) + 2
+    divideInto = len(bot["pairs"])
+
+    if safetys:
+        printSafetys(
+            bot["base_order_volume"],
+            bot["safety_order_volume"],
+            bot["max_safety_orders"],
+            bot["martingale_volume_coefficient"],
+            bot["safety_order_step_percentage"],
+            bot["take_profit"],
+        )
+        return
 
     if totalUSDT is None:
         balances = getBalances()
@@ -112,7 +197,7 @@ def main(live=False, totalUSDT=None):
         neededUSDT,
     ) = getBestBotSettings(totalUSDT / divideInto, bot["max_safety_orders"])
     if baseOrder == 0:
-        print('Unfeasable')
+        print("Unfeasable")
         return
 
     print(
@@ -173,9 +258,12 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     live = False
     usdt = None
+    safetys = False
     for arg in args:
         if arg.startswith("--live"):
             live = int(arg[7:]) == 1
         elif arg.startswith("--usdt"):
             usdt = int(arg[7:], 10)
-    main(live, usdt)
+        elif arg.startswith("--safetys"):
+            safetys = True
+    main(live, usdt, safetys)
