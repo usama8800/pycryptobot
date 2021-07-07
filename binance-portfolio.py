@@ -1,11 +1,11 @@
 import json
 import logging
+import math
 import time
 from datetime import datetime
 
 import mezmorize
 import numpy as np
-import math
 import pandas as pd
 from binance.client import BinanceAPIException, Client
 from pandas.core.frame import DataFrame
@@ -291,22 +291,14 @@ def main():
     portfolio["Profit"] = portfolio.apply(calculateProfit, axis=1)
     portfolio = portfolio.sort_values("Profit", ascending=False)
     sums = portfolio.sum(0)
+    usdIn = sums['USD In']+portfolio.loc['USDT']['Profit']+portfolio.loc['Lost']['Profit']+portfolio.loc['Withdraws']['Profit']
     fullPrint(portfolio)
     log()
-    log(f"USD In {sums['USD In']}")
-    log(f"USD Out {sums['USD Out']}")
+    log(f"Invested      {sums['USD In']}")
+    log(f"USD In   {usdIn}")
+    log(f"USD Out  {sums['USD Out']}")
+    log(f"Profit   {sums['USD Out']-usdIn}")
     log(f"Actual Profit {sums['USD Out'] - sums['USD In']}")
-    log(
-        "Binance Profit "
-        + str(
-            sums["USD Out"]  # What I get
-            - p2p.sum(0)["USD In"]  # What I put in (through P2P)
-            + portfolio.loc["USDT"][
-                "Profit"
-            ]  # What I lost in P2P due to higher rates. Value is negative so adding
-            + portfolio.loc["Withdraws"]["USD In"]
-        ),
-    )
 
     json_object = json.dumps(prices, indent=4)
     with open("./portfolio-data/history/prices.json", "w+") as outfile:
