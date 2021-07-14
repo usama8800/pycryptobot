@@ -63,7 +63,7 @@ def printSafetys(
     safetyOrderPriceDeviation,
     takeProfit,
 ):
-    originalPrice = 0.70009
+    originalPrice = 100
     currentPrice = originalPrice
     buyPrices = [currentPrice]
     avgBuyPrice = currentPrice
@@ -259,6 +259,7 @@ if __name__ == "__main__":
     live = False
     usdt = None
     safetys = False
+
     for arg in args:
         if arg.startswith("--live"):
             live = int(arg[7:]) == 1
