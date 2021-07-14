@@ -69,27 +69,26 @@ def printSafetys(
     avgBuyPrice = currentPrice
     needed = baseOrder + safetyOrderSize
     buyVolumes = [baseOrder]
+    boughtCoins = baseOrder / currentPrice
     df = pd.DataFrame(
         {
-            # "Order": pd.Series([], dtype='str'),
             "Price": pd.Series([], dtype="float"),
             "Volume": pd.Series([], dtype="float"),
             "Avg Price": pd.Series([], dtype="float"),
             "TP Price": pd.Series([], dtype="float"),
             "TP %": pd.Series([], dtype="float"),
+            "TP $": pd.Series([], dtype="float"),
         }
     )
+    tpPrice = avgBuyPrice * (1 + takeProfit / 100)
     df.loc[0] = [
-        # "Base Order",
         currentPrice,
         baseOrder,
         avgBuyPrice,
-        avgBuyPrice * (1 + takeProfit / 100),
-        (avgBuyPrice * (1 + takeProfit / 100) - originalPrice) / originalPrice * 100,
+        tpPrice,
+        (tpPrice - originalPrice) / originalPrice * 100,
+        boughtCoins * tpPrice - baseOrder,
     ]
-    # print(
-    #     f"Base Order:\t\t{(avgBuyPrice*(1+takeProfit/100)-originalPrice)/originalPrice*100:+.1f}%"
-    # )
     for i in range(maxSafetyOrders):
         if i != 0:
             safetyOrderSize *= safetyOrderVolumeDeviation
@@ -100,18 +99,15 @@ def printSafetys(
         avgBuyPrice = sum([v * w for v, w in zip(buyPrices, buyVolumes)]) / sum(
             buyVolumes
         )
-        # print(
-        #     f"Safety Order {i+1:2d}:\t{(avgBuyPrice*(1+takeProfit/100)-originalPrice)/originalPrice*100:+.1f}%"
-        # )
+        tpPrice = avgBuyPrice * (1 + takeProfit / 100)
+        boughtCoins += safetyOrderSize / currentPrice
         df.loc[i + 1] = [
-            # f"Safety Order {i+1:2d}",
             currentPrice,
             safetyOrderSize,
             avgBuyPrice,
-            avgBuyPrice * (1 + takeProfit / 100),
-            (avgBuyPrice * (1 + takeProfit / 100) - originalPrice)
-            / originalPrice
-            * 100,
+            tpPrice,
+            (tpPrice - originalPrice) / originalPrice * 100,
+            boughtCoins * tpPrice - sum(buyVolumes),
         ]
     print(df)
 
