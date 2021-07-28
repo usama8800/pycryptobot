@@ -1,4 +1,4 @@
-import math
+from config import Config
 import sys
 import time
 
@@ -6,14 +6,15 @@ import numpy as np
 import pandas as pd
 from binance.client import Client
 from py3cw.request import Py3CW
+from tqdm import tqdm
 
-from models.PyCryptoBot import PyCryptoBot
-
-app = PyCryptoBot()
-client = Client(app.getAPIKey(), app.getAPISecret(), {"verify": False, "timeout": 20})
+config = Config()
+client = Client(
+    config.binance_key, config.binance_secret, {"verify": False, "timeout": 20}
+)
 p3cw = Py3CW(
-    key=app.tc_key,
-    secret=app.tc_secret,
+    key=config.tc_key,
+    secret=config.tc_secret,
     request_options={
         "request_timeout": 10,
         "nr_of_retries": 1,
@@ -48,11 +49,30 @@ def getBalances():
 def getNeededUSDTFromSettings(
     baseOrder, safetyOrderSize, maxSafetyOrders, safetyOrderVolumeDeviation
 ):
-    needed = baseOrder + safetyOrderSize
-    for i in range(1, maxSafetyOrders):
-        safetyOrderSize *= safetyOrderVolumeDeviation
-        needed += safetyOrderSize
-    return needed
+    return (1 - safetyOrderVolumeDeviation ** maxSafetyOrders) / (
+        1 - safetyOrderVolumeDeviation
+    ) * safetyOrderSize + baseOrder
+
+
+def getLowestTPPercentFromSettings(
+    safetyOrderSize,
+    maxSafetyOrders,
+    safetyOrderVolumeDeviation,
+    safetyOrderStep,
+    takeProfit,
+):
+    prices = [100 - safetyOrderStep * i for i in range(0, maxSafetyOrders + 1)]
+    volumes = [
+        10,
+        *[
+            safetyOrderSize * safetyOrderVolumeDeviation ** i
+            for i in range(0, maxSafetyOrders)
+        ],
+    ]
+    avgPrice = np.dot(prices, volumes) / sum(volumes)
+    tpPrice = avgPrice * (1 + takeProfit / 100)
+    tpPercent = tpPrice - 100
+    return tpPercent
 
 
 def printSafetys(
@@ -93,12 +113,10 @@ def printSafetys(
         if i != 0:
             safetyOrderSize *= safetyOrderVolumeDeviation
             needed += safetyOrderSize
-        currentPrice = originalPrice * (1 - safetyOrderPriceDeviation * (i+1) / 100)
+        currentPrice -= originalPrice * safetyOrderPriceDeviation / 100
         buyPrices.append(currentPrice)
         buyVolumes.append(safetyOrderSize)
-        avgBuyPrice = sum([v * w for v, w in zip(buyPrices, buyVolumes)]) / sum(
-            buyVolumes
-        )
+        avgBuyPrice = np.dot(buyPrices, buyVolumes) / sum(buyVolumes)
         tpPrice = avgBuyPrice * (1 + takeProfit / 100)
         boughtCoins += safetyOrderSize / currentPrice
         df.loc[i + 1] = [
@@ -112,28 +130,44 @@ def printSafetys(
     print(df)
 
 
-def getBestBotSettings(usdt, maxSafetyOrders):
-    bestSettings = (0, 0, 0, 0, 0)
+def getBestBotSettings(usdt):
+    bestSettings = (0, 0, 0, 0, 0, 0)
     for baseOrder in range(10, 11):
         for safetyOrderSize in np.arange(baseOrder, baseOrder * 5, 0.1):
             for safetyOrderDeviation in np.arange(1.01, 1.5, 0.01):
-                neededUSDT = getNeededUSDTFromSettings(
-                    baseOrder, safetyOrderSize, maxSafetyOrders, safetyOrderDeviation
-                )
-                if neededUSDT > usdt:
-                    break
-                if neededUSDT > bestSettings[-1]:
-                    bestSettings = (
-                        baseOrder,
-                        safetyOrderSize,
-                        maxSafetyOrders,
-                        safetyOrderDeviation,
-                        neededUSDT,
-                    )
+                for safetyOrderStep in np.arange(1.1, 10, 0.01):
+                    for maxSafetyOrders in range(15, 101):
+                        neededUSDT = getNeededUSDTFromSettings(
+                            baseOrder,
+                            safetyOrderSize,
+                            maxSafetyOrders,
+                            safetyOrderDeviation,
+                        )
+                        if neededUSDT > usdt:
+                            break
+                        lowestTPPercent = getLowestTPPercentFromSettings(
+                            safetyOrderSize,
+                            maxSafetyOrders,
+                            safetyOrderDeviation,
+                            safetyOrderStep,
+                            1.5,
+                        )
+                        if neededUSDT > bestSettings[4] and lowestTPPercent <= -18:
+                            bestSettings = (
+                                baseOrder,
+                                safetyOrderSize,
+                                maxSafetyOrders,
+                                safetyOrderDeviation,
+                                neededUSDT,
+                                safetyOrderStep,
+                            )
+                            # print(f"{baseOrder} {safetyOrderSize:.2f} {safetyOrderDeviation:.2f} {safetyOrderStep:.2f} {maxSafetyOrders} {neededUSDT:.2f}")
+                    if maxSafetyOrders != 99:
+                        break
     return bestSettings
 
 
-def main(live=False, totalUSDT=None, safetys=False):
+def main(live=False, totalUSDT=None, safetys=False, needed=False):
     resp = p3cw.request(entity="bots", action="")
     bots = pd.DataFrame(resp[1])
     bots = bots[bots["name"] == "TA_COMPOSITE"]
@@ -159,6 +193,16 @@ def main(live=False, totalUSDT=None, safetys=False):
     )
     bot = bots.loc[0]
     divideInto = len(bot["pairs"])
+
+    if needed:
+        needed = getNeededUSDTFromSettings(
+            bot["base_order_volume"],
+            bot["safety_order_volume"],
+            bot["max_safety_orders"],
+            bot["martingale_volume_coefficient"],
+        )
+        print(f"{needed*divideInto:.2f}")
+        return
 
     if safetys:
         printSafetys(
@@ -190,7 +234,8 @@ def main(live=False, totalUSDT=None, safetys=False):
         maxSafetyOrders,
         safetyOrderDeviation,
         neededUSDT,
-    ) = getBestBotSettings((totalUSDT+100) / divideInto, bot["max_safety_orders"])
+        safetyOrderStep,
+    ) = getBestBotSettings((totalUSDT + 100) / divideInto)
     if baseOrder == 0:
         print(f"Total USDT: {totalUSDT:.2f}")
         print("Unfeasable")
@@ -201,7 +246,7 @@ def main(live=False, totalUSDT=None, safetys=False):
         safetyOrderSize,
         maxSafetyOrders,
         safetyOrderDeviation,
-        bot["safety_order_step_percentage"],
+        safetyOrderStep,
         bot["take_profit"],
     )
     print()
@@ -210,7 +255,9 @@ def main(live=False, totalUSDT=None, safetys=False):
 Base Order:             {baseOrder}
 Safety Order Size:      {safetyOrderSize:.2f}
 Safety Order Variation: {safetyOrderDeviation:.2f}
+Safety Order Step:      {safetyOrderStep:.2f}
 Max Safety Order:       {maxSafetyOrders}
+Using $ / bot:          {neededUSDT:.2f}
 Using $:                {neededUSDT*divideInto:.2f} / {totalUSDT:.2f}"""
     )
 
@@ -264,6 +311,7 @@ if __name__ == "__main__":
     live = False
     usdt = None
     safetys = False
+    needed = False
 
     for arg in args:
         if arg.startswith("--live"):
@@ -272,4 +320,6 @@ if __name__ == "__main__":
             usdt = int(arg[7:], 10)
         elif arg in ["--safetys", "--safeteys"]:
             safetys = True
-    main(live, usdt, safetys)
+        elif arg == "--needed":
+            needed = True
+    main(live, usdt, safetys, needed)

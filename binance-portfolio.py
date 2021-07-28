@@ -10,15 +10,19 @@ import pandas as pd
 from binance.client import BinanceAPIException, Client
 from pandas.core.frame import DataFrame
 
-from models.PyCryptoBot import PyCryptoBot
+from config import Config
 
 pd.set_option(
     "display.float_format",
-    lambda x: x if math.isnan(x) else ("%.0f" if int(x) == x else "%0.0f" if abs(x) < 0.0001 else "%.4f")
+    lambda x: x
+    if math.isnan(x)
+    else ("%.0f" if int(x) == x else "%0.0f" if abs(x) < 0.0001 else "%.4f")
     % (-x if -0.0001 <= x < 0 else x),
 )
-app = PyCryptoBot()
-client = Client(app.getAPIKey(), app.getAPISecret(), {"verify": False, "timeout": 20})
+config = Config()
+client = Client(
+    config.binance_key, config.binance_secret, {"verify": False, "timeout": 20}
+)
 extraRows = ["Fees", "Lost", "Withdraws"]
 tradefees = 0.00075
 logging.basicConfig(
@@ -108,11 +112,10 @@ def getAllOrders(symbol: str) -> DataFrame:
                 continue
             break
         df = df.append(pd.DataFrame(resp))
-        df.sort_values(by=['time'], inplace=True)
+        df.sort_values(by=["time"], inplace=True)
         df.reset_index(inplace=True, drop=True)
     if len(df) == 0:
         return df
-
 
     df = df[["executedQty", "cummulativeQuoteQty", "side", "updateTime", "time"]]
     df[["executedQty", "cummulativeQuoteQty"]] = df[
@@ -148,7 +151,7 @@ def getWithdraws():
             endTime=int(pd.to_datetime(df.loc[0]["applyTime"]).timestamp() - 1) * 1000,
         )
         df = df.append(pd.DataFrame(hist))
-        df.sort_values(by='applyTime', inplace=True)
+        df.sort_values(by="applyTime", inplace=True)
         df.reset_index(drop=True, inplace=True)
     df[["amount", "transactionFee"]] = df[["amount", "transactionFee"]].apply(
         pd.to_numeric
@@ -253,6 +256,7 @@ def main():
     for symbol in portfolio.index:
         if symbol in extraRows or symbol == "USDT":
             continue
+        print(symbol)
 
         orders = getAllOrders(symbol)
         if len(orders) == 0:
@@ -291,7 +295,12 @@ def main():
     portfolio["Profit"] = portfolio.apply(calculateProfit, axis=1)
     portfolio = portfolio.sort_values("Profit", ascending=False)
     sums = portfolio.sum(0)
-    usdIn = sums['USD In']+portfolio.loc['USDT']['Profit']+portfolio.loc['Lost']['Profit']+portfolio.loc['Withdraws']['Profit']
+    usdIn = (
+        sums["USD In"]
+        + portfolio.loc["USDT"]["Profit"]
+        + portfolio.loc["Lost"]["Profit"]
+        + portfolio.loc["Withdraws"]["Profit"]
+    )
     fullPrint(portfolio)
     log()
     log(f"Invested      {sums['USD In']}")

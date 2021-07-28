@@ -4,11 +4,14 @@ import numpy as np
 import pandas as pd
 from binance.client import Client
 
-from models.exchange.coinbase_pro.api import (
-    FREQUENCY_EQUIVALENTS,
-    SUPPORTED_GRANULARITY,
-)
-from models.PyCryptoBot import PyCryptoBot, to_binance_granularity
+from config import Config
+
+
+def to_binance_granularity(granularity: int) -> str:
+    return {60: "1m", 300: "5m", 900: "15m", 3600: "1h", 21600: "6h", 86400: "1d"}[
+        granularity
+    ]
+
 
 baseCoin = "DOGE"
 quoteCoin = "USDT"
@@ -20,8 +23,10 @@ safetyOrderVolumeDeviation = 1.05
 maxSafetyOrders = 15
 takeProfitPercentage = 1.015
 
-app = PyCryptoBot()
-client = Client(app.getAPIKey(), app.getAPISecret(), {"verify": False, "timeout": 20})
+config = Config()
+client = Client(
+    config.binance_key, config.binance_secret, {"verify": False, "timeout": 20}
+)
 
 
 def main():
@@ -93,29 +98,29 @@ def getNeededUSDTFromSettings(
 
 
 def getTradingData():
-    if app.simstartdate is not None and app.simenddate is not None:
-        date = app.simstartdate.split("-")
+    if config.simstartdate is not None and config.simenddate is not None:
+        date = config.simstartdate.split("-")
         startDate = datetime(int(date[0]), int(date[1]), int(date[2]))
-        if app.simenddate == "now":
+        if config.simenddate == "now":
             endDate = datetime.now()
         else:
-            date = app.simenddate.split("-")
+            date = config.simenddate.split("-")
             endDate = datetime(int(date[0]), int(date[1]), int(date[2]))
-    elif app.simstartdate is not None and app.simenddate is None:
-        date = app.simstartdate.split("-")
+    elif config.simstartdate is not None and config.simenddate is None:
+        date = config.simstartdate.split("-")
         startDate = datetime(int(date[0]), int(date[1]), int(date[2]))
-        endDate = startDate + timedelta(minutes=(app.getGranularity() / 60) * 300)
-    elif app.simstartdate is None and app.simenddate is not None:
-        if app.simenddate == "now":
+        endDate = startDate + timedelta(minutes=(config.granularity / 60) * 300)
+    elif config.simstartdate is None and config.simenddate is not None:
+        if config.simenddate == "now":
             endDate = datetime.now()
         else:
-            date = app.simenddate.split("-")
+            date = config.simenddate.split("-")
             endDate = datetime(int(date[0]), int(date[1]), int(date[2]))
-        startDate = endDate - timedelta(minutes=(app.getGranularity() / 60) * 300)
+        startDate = endDate - timedelta(minutes=(config.granularity / 60) * 300)
     else:
         raise KeyError("Set start and end date")
 
-    granularity = to_binance_granularity(app.getGranularity())
+    granularity = to_binance_granularity(config.getGranularity())
     resp = client.get_historical_klines(
         market,
         granularity,
@@ -147,6 +152,9 @@ def getTradingData():
     df["open_time"] = df["open_time"] + 1
     df["open_time"] = df["open_time"].astype(str)
     df["open_time"] = df["open_time"].str.replace(r"\d{3}$", "", regex=True)
+
+    SUPPORTED_GRANULARITY = [60, 300, 900, 3600, 21600, 86400]
+    FREQUENCY_EQUIVALENTS = ["T", "5T", "15T", "H", "6H", "D"]
 
     try:
         freq = FREQUENCY_EQUIVALENTS[SUPPORTED_GRANULARITY.index(granularity)]
