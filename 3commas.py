@@ -93,7 +93,7 @@ def printSafetys(
         if i != 0:
             safetyOrderSize *= safetyOrderVolumeDeviation
             needed += safetyOrderSize
-        currentPrice *= 1 - safetyOrderPriceDeviation / 100
+        currentPrice = originalPrice * (1 - safetyOrderPriceDeviation * (i+1) / 100)
         buyPrices.append(currentPrice)
         buyVolumes.append(safetyOrderSize)
         avgBuyPrice = sum([v * w for v, w in zip(buyPrices, buyVolumes)]) / sum(
@@ -112,11 +112,11 @@ def printSafetys(
     print(df)
 
 
-def getBestBotSettings(usdt, maxSafetyOrders=15):
+def getBestBotSettings(usdt, maxSafetyOrders):
     bestSettings = (0, 0, 0, 0, 0)
-    for baseOrder in range(10, 50):
-        for safetyOrderSize in np.arange(baseOrder * 2, baseOrder * 5, 0.1):
-            for safetyOrderDeviation in np.arange(1.05, 1.2, 0.01):
+    for baseOrder in range(10, 11):
+        for safetyOrderSize in np.arange(baseOrder, baseOrder * 5, 0.1):
+            for safetyOrderDeviation in np.arange(1.01, 1.5, 0.01):
                 neededUSDT = getNeededUSDTFromSettings(
                     baseOrder, safetyOrderSize, maxSafetyOrders, safetyOrderDeviation
                 )
@@ -184,18 +184,27 @@ def main(live=False, totalUSDT=None, safetys=False):
             totalUSDT += float(deals[deals["pair"] == pair]["bought_volume"].values[0])
 
         totalUSDT += balances[balances["asset"] == "USDT"]["total"].values[0]
-
     (
         baseOrder,
         safetyOrderSize,
         maxSafetyOrders,
         safetyOrderDeviation,
         neededUSDT,
-    ) = getBestBotSettings(totalUSDT / divideInto, bot["max_safety_orders"])
+    ) = getBestBotSettings((totalUSDT+100) / divideInto, bot["max_safety_orders"])
     if baseOrder == 0:
+        print(f"Total USDT: {totalUSDT:.2f}")
         print("Unfeasable")
         return
 
+    printSafetys(
+        baseOrder,
+        safetyOrderSize,
+        maxSafetyOrders,
+        safetyOrderDeviation,
+        bot["safety_order_step_percentage"],
+        bot["take_profit"],
+    )
+    print()
     print(
         f"""Bot "{bot['name']}" settings
 Base Order:             {baseOrder}
@@ -261,6 +270,6 @@ if __name__ == "__main__":
             live = int(arg[7:]) == 1
         elif arg.startswith("--usdt"):
             usdt = int(arg[7:], 10)
-        elif arg.startswith("--safetys"):
+        elif arg in ["--safetys", "--safeteys"]:
             safetys = True
     main(live, usdt, safetys)
