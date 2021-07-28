@@ -1,5 +1,9 @@
 import json
 
+import urllib3
+
+urllib3.disable_warnings()
+
 
 class Config:
     def __init__(self) -> None:
