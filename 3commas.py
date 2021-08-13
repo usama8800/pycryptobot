@@ -1,4 +1,3 @@
-from config import Config
 import sys
 import time
 
@@ -7,6 +6,8 @@ import pandas as pd
 from binance.client import Client
 from py3cw.request import Py3CW
 from tqdm import tqdm
+
+from config import Config
 
 config = Config()
 client = Client(
@@ -167,7 +168,9 @@ def getBestBotSettings(usdt):
     return bestSettings
 
 
-def main(live=False, totalUSDT=None, safetys=False, needed=False):
+def main(
+    live=False, totalUSDT=None, safetys=False, needed=False, extraBots=0, extraUSDT=0
+):
     resp = p3cw.request(entity="bots", action="")
     bots = pd.DataFrame(resp[1])
     bots = bots[bots["name"] == "TA_COMPOSITE"]
@@ -192,7 +195,7 @@ def main(live=False, totalUSDT=None, safetys=False, needed=False):
         pd.to_numeric
     )
     bot = bots.loc[0]
-    divideInto = len(bot["pairs"])
+    divideInto = len(bot["pairs"]) + extraBots
 
     if needed:
         needed = getNeededUSDTFromSettings(
@@ -235,7 +238,7 @@ def main(live=False, totalUSDT=None, safetys=False, needed=False):
         safetyOrderDeviation,
         neededUSDT,
         safetyOrderStep,
-    ) = getBestBotSettings((totalUSDT + 100) / divideInto)
+    ) = getBestBotSettings((totalUSDT + extraUSDT) / divideInto)
     if baseOrder == 0:
         print(f"Total USDT: {totalUSDT:.2f}")
         print("Unfeasable")
@@ -251,7 +254,7 @@ def main(live=False, totalUSDT=None, safetys=False, needed=False):
     )
     print()
     print(
-        f"""Bot "{bot['name']}" settings
+        f"""Bot "{bot['name']}" settings for {divideInto} pairs
 Base Order:             {baseOrder}
 Safety Order Size:      {safetyOrderSize:.2f}
 Safety Order Variation: {safetyOrderDeviation:.2f}
@@ -312,6 +315,8 @@ if __name__ == "__main__":
     usdt = None
     safetys = False
     needed = False
+    extraBots = 1
+    extraUSDT = 300
 
     for arg in args:
         if arg.startswith("--live"):
@@ -322,4 +327,8 @@ if __name__ == "__main__":
             safetys = True
         elif arg == "--needed":
             needed = True
-    main(live, usdt, safetys, needed)
+        elif arg == "--extra-usdt":
+            extraUSDT = int(arg[13:], 10)
+        elif arg.startswith("--extra-bots"):
+            extraBots = int(arg[13:], 10)
+    main(live, usdt, safetys, needed, extraBots, extraUSDT)
