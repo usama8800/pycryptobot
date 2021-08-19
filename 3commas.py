@@ -3,6 +3,7 @@ import time
 
 import numpy as np
 import pandas as pd
+import requests
 from binance.client import Client
 from py3cw.request import Py3CW
 from tqdm import tqdm
@@ -132,7 +133,7 @@ def printSafetys(
 
 
 def getBestBotSettings(usdt):
-    bestSettings = (0, 0, 0, 0, 0, 0)
+    bestSettings = (0, 0, 0, 0, 0, 0, 0)
     for baseOrder in range(10, 11):
         for safetyOrderSize in np.arange(baseOrder, baseOrder * 5, 0.1):
             for safetyOrderDeviation in np.arange(1.01, 1.5, 0.01):
@@ -161,6 +162,7 @@ def getBestBotSettings(usdt):
                                 safetyOrderDeviation,
                                 neededUSDT,
                                 safetyOrderStep,
+                                lowestTPPercent,
                             )
                             # print(f"{baseOrder} {safetyOrderSize:.2f} {safetyOrderDeviation:.2f} {safetyOrderStep:.2f} {maxSafetyOrders} {neededUSDT:.2f}")
                     if maxSafetyOrders != 99:
@@ -169,7 +171,13 @@ def getBestBotSettings(usdt):
 
 
 def main(
-    live=False, totalUSDT=None, safetys=False, needed=False, extraBots=0, extraUSDT=0
+    live=False,
+    totalUSDT=None,
+    safetys=None,
+    needed=False,
+    extraBots=0,
+    extraUSDT=0,
+    auto=False,
 ):
     resp = p3cw.request(entity="bots", action="")
     bots = pd.DataFrame(resp[1])
@@ -238,31 +246,47 @@ def main(
         safetyOrderDeviation,
         neededUSDT,
         safetyOrderStep,
+        lowestTPPercent,
     ) = getBestBotSettings((totalUSDT + extraUSDT) / divideInto)
     if baseOrder == 0:
-        print(f"Total USDT: {totalUSDT:.2f}")
-        print("Unfeasable")
+        print(
+            f"""Bot "{bot['name']}" settings for {divideInto} pairs
+with {totalUSDT:.2f} USDT
+
+Unfeasable"""
+        )
         return
 
-    printSafetys(
-        baseOrder,
-        safetyOrderSize,
-        maxSafetyOrders,
-        safetyOrderDeviation,
-        safetyOrderStep,
-        bot["take_profit"],
-    )
-    print()
-    print(
-        f"""Bot "{bot['name']}" settings for {divideInto} pairs
+    if safetys is None:
+        printSafetys(
+            baseOrder,
+            safetyOrderSize,
+            maxSafetyOrders,
+            safetyOrderDeviation,
+            safetyOrderStep,
+            bot["take_profit"],
+        )
+        print()
+    content = f"""
 Base Order:             {baseOrder}
 Safety Order Size:      {safetyOrderSize:.2f}
 Safety Order Variation: {safetyOrderDeviation:.2f}
 Safety Order Step:      {safetyOrderStep:.2f}
 Max Safety Order:       {maxSafetyOrders}
 Using $ / bot:          {neededUSDT:.2f}
-Using $:                {neededUSDT*divideInto:.2f} / {totalUSDT:.2f}"""
-    )
+Using $:                {neededUSDT*divideInto:.2f} / {totalUSDT:.2f}
+Lowest Take Profit %:   {lowestTPPercent:.2f}"""
+    if auto:
+        requests.post(
+            config.discordHook,
+            {
+                "content": f"""Bot `{bot['name']}` settings for `{divideInto}` pairs\n```{content}```"""
+            },
+        )
+    else:
+        print("Bot \"{bot['name']}\" settings for {divideInto} pairs")
+        print(content)
+    return
 
     if (
         abs(bot["base_order_volume"] - baseOrder) < 1
@@ -272,7 +296,6 @@ Using $:                {neededUSDT*divideInto:.2f} / {totalUSDT:.2f}"""
         or not live
     ):
         return
-    return
     resp = p3cw.request(
         entity="bots",
         action="update",
@@ -310,25 +333,40 @@ Using $:                {neededUSDT:.2f} / {totalUSDT:.2f}
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
     live = False
     usdt = None
-    safetys = False
+    safetys = None
     needed = False
     extraBots = 1
     extraUSDT = 300
+    auto = False
 
-    for arg in args:
-        if arg.startswith("--live"):
-            live = int(arg[7:]) == 1
-        elif arg.startswith("--usdt"):
-            usdt = int(arg[7:], 10)
-        elif arg in ["--safetys", "--safeteys"]:
-            safetys = True
-        elif arg == "--needed":
-            needed = True
-        elif arg == "--extra-usdt":
-            extraUSDT = int(arg[13:], 10)
-        elif arg.startswith("--extra-bots"):
-            extraBots = int(arg[13:], 10)
-    main(live, usdt, safetys, needed, extraBots, extraUSDT)
+    for arg in sys.argv[1:]:
+        if not arg.startswith("--"):
+            raise KeyError("Unknown option")
+
+        arg = arg[2:].split("=")
+        key = arg[0]
+        val = 1
+        if len(arg) == 2:
+            val = arg[1]
+
+        if key == "live":
+            live = int(val) == 1
+        elif key == "usdt":
+            usdt = int(val, 10)
+        elif key in ["safetys", "safeteys"]:
+            safetys = int(val) == 1
+        elif key == "needed":
+            needed = int(val) == 1
+        elif key == "extra-usdt":
+            extraUSDT = int(val)
+        elif key == "extra-bots":
+            extraBots = int(val)
+        elif key == "auto":
+            auto = int(val) == 1
+            if safetys is None:
+                safetys = False
+        else:
+            raise KeyError(f"Unknown option '{arg}'")
+    main(live, usdt, safetys, needed, extraBots, extraUSDT, auto)
