@@ -153,7 +153,7 @@ def getBestBotSettings(usdt):
                             safetyOrderStep,
                             1.5,
                         )
-                        if neededUSDT > bestSettings[4] and lowestTPPercent <= -18:
+                        if lowestTPPercent <= -18 and safetyOrderSize > bestSettings[1]:
                             bestSettings = (
                                 baseOrder,
                                 safetyOrderSize,
