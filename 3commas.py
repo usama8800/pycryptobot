@@ -284,7 +284,7 @@ Lowest Take Profit %:   {lowestTPPercent:.2f}"""
             },
         )
     else:
-        print("Bot \"{bot['name']}\" settings for {divideInto} pairs")
+        print(f"""Bot "{bot['name']}" settings for {divideInto} pairs""")
         print(content)
     return
 
