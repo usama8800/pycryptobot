@@ -277,12 +277,16 @@ Using $ / bot:          {neededUSDT:.2f}
 Using $:                {neededUSDT*divideInto:.2f} / {totalUSDT:.2f}
 Lowest Take Profit %:   {lowestTPPercent:.2f}"""
     if auto:
-        requests.post(
+        res = requests.post(
             config.discordHook,
             {
                 "content": f"""Bot `{bot['name']}` settings for `{divideInto}` pairs\n```{content}```"""
             },
         )
+        if 200 <= res.status_code < 300:
+            pass
+        else:
+            exit(1)
     else:
         print(f"""Bot "{bot['name']}" settings for {divideInto} pairs""")
         print(content)
