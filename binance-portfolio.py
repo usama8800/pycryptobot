@@ -204,6 +204,9 @@ def calculateProfit(row):
 
 def main():
     p2p: DataFrame = pd.read_json("./portfolio-data/p2p.json", convert_dates=["Time"])
+    p2pSum = p2p.sum(0)
+    print(f"""P2P In: {p2pSum["USD In"]:.0f}""")
+
     converts: DataFrame = pd.read_json(
         "./portfolio-data/converts.json", convert_dates=["Time"]
     )
