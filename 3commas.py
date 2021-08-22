@@ -1,5 +1,6 @@
 import sys
 import time
+from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -11,9 +12,6 @@ from tqdm import tqdm
 from config import Config
 
 config = Config()
-client = Client(
-    config.binance_key, config.binance_secret, {"verify": False, "timeout": 20}
-)
 p3cw = Py3CW(
     key=config.tc_key,
     secret=config.tc_secret,
@@ -25,21 +23,10 @@ p3cw = Py3CW(
 )
 
 
-def getPriceAtTime(symbol: str, endTime=time.time() * 1000, save=False):
-    if "timestamp" in dir(endTime):
-        endTime = endTime.timestamp() * 1000
-    endTime = int(endTime)
-    # ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', '', '', '', '', '']
-    res = client.get_klines(
-        symbol=symbol,
-        interval="1m",
-        limit=1,
-        endTime=endTime,
-    )
-    return float(res[0][4])
-
-
 def getBalances():
+    client = Client(
+        config.binance_key, config.binance_secret, {"verify": False, "timeout": 20}
+    )
     accountInfo = client.get_account()
     balances = pd.DataFrame(accountInfo["balances"])
     balances[["free", "locked"]] = balances[["free", "locked"]].apply(pd.to_numeric)
@@ -132,6 +119,28 @@ def printSafetys(
     print(df)
 
 
+def printProfits(pairs, days=30):
+    coins = [x[5:] for x in pairs]
+    df = pd.DataFrame(columns=["Base", "Profit", "First Closed"])
+    success = False
+    for coin in coins:
+        success, deals = get_deals(coin, days)
+        while not success:
+            print(coin, "deals failed. Retying in a sec...")
+            time.sleep(1)
+            success, deals = get_deals(coin, days)
+        if len(deals) == 0:
+            df.loc[len(df)] = [coin, 0, ""]
+            continue
+        firstClosed = deals.loc[len(deals) - 1]["closed_at"]
+        profit = deals["actual_profit"].sum()
+        df.loc[len(df)] = [coin, profit, firstClosed[: firstClosed.index("T")]]
+    df = df.sort_values(by=["Profit"])
+    df.reset_index(inplace=True, drop=True)
+    print(df)
+    print(df["Profit"].sum())
+
+
 def getBestBotSettings(usdt):
     bestSettings = (0, 0, 0, 0, 0, 0, 0)
     for baseOrder in range(10, 11):
@@ -164,25 +173,61 @@ def getBestBotSettings(usdt):
                                 safetyOrderStep,
                                 lowestTPPercent,
                             )
-                            # print(f"{baseOrder} {safetyOrderSize:.2f} {safetyOrderDeviation:.2f} {safetyOrderStep:.2f} {maxSafetyOrders} {neededUSDT:.2f}")
                     if maxSafetyOrders != 99:
                         break
     return bestSettings
 
 
-def main(
-    live=False,
-    totalUSDT=None,
-    safetys=None,
-    needed=False,
-    extraBots=0,
-    extraUSDT=0,
-    auto=False,
-):
-    resp = p3cw.request(entity="bots", action="")
+def get_deals(coin, days=30):
+    now = datetime.now()
+    month_ago = now - timedelta(days=days)
+    resp = p3cw.request(
+        entity="deals",
+        action="",
+        payload={
+            "limit": 1000,
+            "scope": "completed",
+            "from": month_ago.isoformat(),
+            "base": coin,
+        },
+    )
+    if "error" in resp and resp["error"]:
+        return (False, False)
+    deals = pd.DataFrame(resp[1])
+    while len(resp[1]) != 0:
+        resp = p3cw.request(
+            entity="deals",
+            action="",
+            payload={
+                "limit": 1000,
+                "scope": "completed",
+                "offset": len(deals),
+                "from": month_ago.isoformat(),
+                "base": coin,
+            },
+        )
+        deals = deals.append(resp[1])
+    deals.reset_index(inplace=True, drop=True)
+    if len(deals) > 0:
+        deals[
+            ["actual_usd_profit", "final_profit", "usd_final_profit", "actual_profit"]
+        ] = deals[
+            ["actual_usd_profit", "final_profit", "usd_final_profit", "actual_profit"]
+        ].apply(
+            pd.to_numeric
+        )
+    return (True, deals)
+
+
+def get_bot(name="TA_COMPOSITE"):
+    resp = p3cw.request(
+        entity="bots",
+        action="",
+        payload={"scope": "enabled"},
+    )
     bots = pd.DataFrame(resp[1])
-    bots = bots[bots["name"] == "TA_COMPOSITE"]
-    bots = bots.reset_index()
+    bots = bots[bots["name"] == name]
+    bots.reset_index(inplace=True, drop=True)
     bots[
         [
             "base_order_volume",
@@ -202,175 +247,212 @@ def main(
     ].apply(
         pd.to_numeric
     )
-    bot = bots.loc[0]
-    divideInto = len(bot["pairs"]) + extraBots
+    return bots.loc[0]
 
-    if needed:
-        needed = getNeededUSDTFromSettings(
-            bot["base_order_volume"],
-            bot["safety_order_volume"],
-            bot["max_safety_orders"],
-            bot["martingale_volume_coefficient"],
-        )
-        print(f"{needed*divideInto:.2f}")
-        return
 
-    if safetys:
-        printSafetys(
-            bot["base_order_volume"],
-            bot["safety_order_volume"],
-            bot["max_safety_orders"],
-            bot["martingale_volume_coefficient"],
-            bot["safety_order_step_percentage"],
-            bot["take_profit"],
-        )
-        return
+def fullPrint(df, rows=None, cols=None):
+    with pd.option_context("display.max_rows", rows, "display.max_columns", cols):
+        print(df)
 
-    if totalUSDT is None:
-        balances = getBalances()
-        totalUSDT = 0
-        resp = p3cw.request(
-            entity="deals", action="", payload={"bot_id": bot["id"], "scope": "active"}
-        )
-        deals = pd.DataFrame(resp[1])
-        deals = deals[["pair", "bought_amount", "bought_volume"]]
 
-        for pair in bot["pairs"]:
-            totalUSDT += float(deals[deals["pair"] == pair]["bought_volume"].values[0])
+class Main:
+    def __init__(self):
+        self.live = False
+        self.usdt = None
+        self.safetys = None
+        self.needed = False
+        self.extraBots = 1
+        self.extraUSDT = 300
+        self.auto = False
+        self.profits = False
+        self.days = 30
 
-        totalUSDT += balances[balances["asset"] == "USDT"]["total"].values[0]
-    (
-        baseOrder,
-        safetyOrderSize,
-        maxSafetyOrders,
-        safetyOrderDeviation,
-        neededUSDT,
-        safetyOrderStep,
-        lowestTPPercent,
-    ) = getBestBotSettings((totalUSDT + extraUSDT) / divideInto)
-    if baseOrder == 0:
-        print(
-            f"""Bot "{bot['name']}" settings for {divideInto} pairs
-with {totalUSDT:.2f} USDT
+        for arg in sys.argv[1:]:
+            if not arg.startswith("--"):
+                raise KeyError("Unknown option")
 
-Unfeasable"""
-        )
-        return
+            arg = arg[2:].split("=")
+            key = arg[0]
+            val = 1
+            if len(arg) == 2:
+                val = arg[1]
 
-    if safetys is None:
-        printSafetys(
+            if key == "live":
+                self.live = int(val) == 1
+            elif key == "usdt":
+                self.usdt = int(val, 10)
+            elif key in ["safetys", "safeteys"]:
+                self.safetys = int(val) == 1
+            elif key == "needed":
+                self.needed = int(val) == 1
+            elif key == "profits":
+                self.profits = int(val) == 1
+            elif key == "extra-usdt":
+                self.extraUSDT = int(val)
+            elif key == "extra-bots":
+                self.extraBots = int(val)
+            elif key == "auto":
+                self.auto = int(val) == 1
+                if self.safetys is None:
+                    self.safetys = False
+            elif key == "days":
+                self.days = int(val)
+            else:
+                raise KeyError(f"Unknown option '{arg}'")
+
+            if self.needed and self.safetys:
+                raise KeyError(f"Options --safetys and --needed conflict")
+            if self.needed and self.profits:
+                raise KeyError(f"Options --profits and --needed conflict")
+            if self.safetys and self.profits:
+                raise KeyError(f"Options --profits and --safetys conflict")
+        self.bot = get_bot()
+        self.main()
+
+    def main(self):
+        divideInto = len(self.bot["pairs"]) + self.extraBots
+
+        if self.needed:
+            needed = getNeededUSDTFromSettings(
+                self.bot["base_order_volume"],
+                self.bot["safety_order_volume"],
+                self.bot["max_safety_orders"],
+                self.bot["martingale_volume_coefficient"],
+            )
+            print(f"{needed*divideInto:.2f}")
+            return
+
+        if self.safetys:
+            printSafetys(
+                self.bot["base_order_volume"],
+                self.bot["safety_order_volume"],
+                self.bot["max_safety_orders"],
+                self.bot["martingale_volume_coefficient"],
+                self.bot["safety_order_step_percentage"],
+                self.bot["take_profit"],
+            )
+            return
+
+        if self.profits:
+            printProfits(self.bot["pairs"], self.days)
+            return
+
+        if self.usdt is None:
+            balances = getBalances()
+            self.usdt = 0
+            resp = p3cw.request(
+                entity="deals",
+                action="",
+                payload={"bot_id": self.bot["id"], "scope": "active"},
+            )
+            deals = pd.DataFrame(resp[1])
+            deals = deals[["pair", "bought_amount", "bought_volume"]]
+
+            for pair in self.bot["pairs"]:
+                self.usdt += float(
+                    deals[deals["pair"] == pair]["bought_volume"].values[0]
+                )
+
+            self.usdt += balances[balances["asset"] == "USDT"]["total"].values[0]
+        (
             baseOrder,
             safetyOrderSize,
             maxSafetyOrders,
             safetyOrderDeviation,
+            neededUSDT,
             safetyOrderStep,
-            bot["take_profit"],
-        )
-        print()
-    content = f"""
+            lowestTPPercent,
+        ) = getBestBotSettings((self.usdt + self.extraUSDT) / divideInto)
+        if baseOrder == 0:
+            print(
+                f"""Bot "{self.bot['name']}" settings for {divideInto} pairs
+with {self.usdt:.2f} USDT
+
+Unfeasable"""
+            )
+            return
+
+        if self.safetys is None:
+            printSafetys(
+                baseOrder,
+                safetyOrderSize,
+                maxSafetyOrders,
+                safetyOrderDeviation,
+                safetyOrderStep,
+                self.bot["take_profit"],
+            )
+            print()
+        content = f"""
 Base Order:             {baseOrder}
 Safety Order Size:      {safetyOrderSize:.2f}
 Safety Order Variation: {safetyOrderDeviation:.2f}
 Safety Order Step:      {safetyOrderStep:.2f}
 Max Safety Order:       {maxSafetyOrders}
-Using $ / bot:          {neededUSDT:.2f}
-Using $:                {neededUSDT*divideInto:.2f} / {totalUSDT:.2f}
+Using $ / self.bot:          {neededUSDT:.2f}
+Using $:                {neededUSDT*divideInto:.2f} / {self.usdt:.2f}
 Lowest Take Profit %:   {lowestTPPercent:.2f}"""
-    if auto:
-        res = requests.post(
-            config.discordHook,
-            {
-                "content": f"""Bot `{bot['name']}` settings for `{divideInto}` pairs\n```{content}```"""
+        if self.auto:
+            res = requests.post(
+                config.discordHook,
+                {
+                    "content": f"""Bot `{self.bot['name']}` settings for `{divideInto}` pairs\n```{content}```"""
+                },
+            )
+            if 200 <= res.status_code < 300:
+                pass
+            else:
+                exit(1)
+        else:
+            print(f"""Bot "{self.bot['name']}" settings for {divideInto} pairs""")
+            print(content)
+        return
+
+        if (
+            abs(self.bot["base_order_volume"] - baseOrder) < 1
+            and abs(self.bot["safety_order_volume"] - safetyOrderSize) < 0.1
+            and abs(self.bot["martingale_volume_coefficient"] - safetyOrderDeviation)
+            < 0.1
+            and abs(self.bot["max_safety_orders"] - maxSafetyOrders) < 1
+            or not live
+        ):
+            return
+        resp = p3cw.request(
+            entity="bots",
+            action="update",
+            action_id=str(self.bot["id"]),
+            payload={
+                "name": self.bot["name"],
+                "pairs": self.bot["pairs"],
+                "max_active_deals": 1,
+                "base_order_volume": baseOrder,
+                "take_profit": self.bot["take_profit"],
+                "safety_order_volume": safetyOrderSize,
+                "martingale_volume_coefficient": safetyOrderDeviation,
+                "martingale_step_coefficient": 1,
+                "max_safety_orders": maxSafetyOrders,
+                "active_safety_orders_count": 1,
+                "safety_order_step_percentage": self.bot[
+                    "safety_order_step_percentage"
+                ],
+                "take_profit_type": self.bot["take_profit_type"],
+                "strategy_list": self.bot["strategy_list"],
+                "bot_id": int(self.bot["id"]),
             },
         )
-        if 200 <= res.status_code < 300:
-            pass
-        else:
-            exit(1)
-    else:
-        print(f"""Bot "{bot['name']}" settings for {divideInto} pairs""")
-        print(content)
-    return
-
-    if (
-        abs(bot["base_order_volume"] - baseOrder) < 1
-        and abs(bot["safety_order_volume"] - safetyOrderSize) < 0.1
-        and abs(bot["martingale_volume_coefficient"] - safetyOrderDeviation) < 0.1
-        and abs(bot["max_safety_orders"] - maxSafetyOrders) < 1
-        or not live
-    ):
-        return
-    resp = p3cw.request(
-        entity="bots",
-        action="update",
-        action_id=str(bot["id"]),
-        payload={
-            "name": bot["name"],
-            "pairs": bot["pairs"],
-            "max_active_deals": 1,
-            "base_order_volume": baseOrder,
-            "take_profit": bot["take_profit"],
-            "safety_order_volume": safetyOrderSize,
-            "martingale_volume_coefficient": safetyOrderDeviation,
-            "martingale_step_coefficient": 1,
-            "max_safety_orders": maxSafetyOrders,
-            "active_safety_orders_count": 1,
-            "safety_order_step_percentage": bot["safety_order_step_percentage"],
-            "take_profit_type": bot["take_profit_type"],
-            "strategy_list": bot["strategy_list"],
-            "bot_id": int(bot["id"]),
-        },
-    )
-    if len(resp[0].keys()) == 0:
-        print("Success")
-        app.notifyTelegram(
-            f"""* Bot "{bot['name']}" updated*
+        if len(resp[0].keys()) == 0:
+            print("Success")
+            app.notifyTelegram(
+                f"""* Bot "{self.bot['name']}" updated*
 ```
 Base Order:             {baseOrder}
 Safety Order Size:      {safetyOrderSize:.2f}
 Safety Order Variation: {safetyOrderDeviation:.2f}
 Max Safety Order:       {maxSafetyOrders}
-Using $:                {neededUSDT:.2f} / {totalUSDT:.2f}
+Using $:                {neededUSDT:.2f} / {self.usdt:.2f}
 ```""",
-            False,
-        )
+                False,
+            )
 
 
 if __name__ == "__main__":
-    live = False
-    usdt = None
-    safetys = None
-    needed = False
-    extraBots = 1
-    extraUSDT = 300
-    auto = False
-
-    for arg in sys.argv[1:]:
-        if not arg.startswith("--"):
-            raise KeyError("Unknown option")
-
-        arg = arg[2:].split("=")
-        key = arg[0]
-        val = 1
-        if len(arg) == 2:
-            val = arg[1]
-
-        if key == "live":
-            live = int(val) == 1
-        elif key == "usdt":
-            usdt = int(val, 10)
-        elif key in ["safetys", "safeteys"]:
-            safetys = int(val) == 1
-        elif key == "needed":
-            needed = int(val) == 1
-        elif key == "extra-usdt":
-            extraUSDT = int(val)
-        elif key == "extra-bots":
-            extraBots = int(val)
-        elif key == "auto":
-            auto = int(val) == 1
-            if safetys is None:
-                safetys = False
-        else:
-            raise KeyError(f"Unknown option '{arg}'")
-    main(live, usdt, safetys, needed, extraBots, extraUSDT, auto)
+    Main()
