@@ -141,18 +141,19 @@ def getWithdraws():
         df = pd.read_json(f"./portfolio-data/history/withdraws.json")
     except:
         df = pd.DataFrame()
-    if len(df) == 0:
-        hist = client.get_withdraw_history(status=6, limit=1000)
-        df = pd.DataFrame(hist)
-    while hist is None or len(hist) > 0:
-        hist = client.get_withdraw_history(
-            status=6,
-            limit=1000,
-            endTime=int(pd.to_datetime(df.loc[0]["applyTime"]).timestamp() - 1) * 1000,
-        )
-        df = df.append(pd.DataFrame(hist))
-        df.sort_values(by="applyTime", inplace=True)
-        df.reset_index(drop=True, inplace=True)
+    # if len(df) == 0:
+    #     hist = client.get_withdraw_history(status=6, limit=1000)
+    #     df = pd.DataFrame(hist)
+    # while hist is None or len(hist) > 0:
+    #     hist = client.get_withdraw_history(
+    #         status=6,
+    #         limit=1000,
+    #         startTime=int(pd.to_datetime(df.loc[0]["applyTime"]).timestamp() - 1)
+    #         * 1000,
+    #     )
+    #     df = df.append(pd.DataFrame(hist))
+    #     df.sort_values(by="applyTime", inplace=True)
+    #     df.reset_index(drop=True, inplace=True)
     df[["amount", "transactionFee"]] = df[["amount", "transactionFee"]].apply(
         pd.to_numeric
     )
@@ -290,7 +291,7 @@ def main():
     # for i, deposit in getDeposits().iterrows():
     #     price
 
-    portfolio.loc["Lost"]["USD In"] = 196.2
+    portfolio.loc["Lost"]["USD In"] = 200
     portfolio["USD Out"] = portfolio.apply(calculateUSD, axis=1)
     portfolio["Profit"] = portfolio.apply(calculateProfit, axis=1)
     portfolio = portfolio.sort_values("Profit", ascending=False)
