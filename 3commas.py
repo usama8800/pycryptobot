@@ -388,7 +388,7 @@ Safety Order Size:      {safetyOrderSize:.2f}
 Safety Order Variation: {safetyOrderDeviation:.2f}
 Safety Order Step:      {safetyOrderStep:.2f}
 Max Safety Order:       {maxSafetyOrders}
-Using $ / self.bot:          {neededUSDT:.2f}
+Using $ / bot:          {neededUSDT:.2f}
 Using $:                {neededUSDT*divideInto:.2f} / {self.usdt:.2f}
 Lowest Take Profit %:   {lowestTPPercent:.2f}"""
         if self.auto:
