@@ -142,10 +142,10 @@ def printProfits(pairs, days=30):
 def getBestBotSettings(usdt, givenBounce):
     # base order, safety order, max safetys, safety variation, used usdt, safety step, lowest tp %
     settings = []
-    for baseOrder in range(10, 11):
+    for baseOrder in range(10, 20):
         for safetyOrder in np.arange(baseOrder, baseOrder * 5, 0.1):
             for safetyVariation in np.arange(1.01, 1.05, 0.01):
-                for safetyStep in np.arange(1.1, 3, 0.01):
+                for safetyStep in np.arange(1.1, 2.4, 0.01):
                     for maxSafetyOrders in range(15, 101):
                         neededUSDT = getNeededUSDTFromSettings(
                             baseOrder,
@@ -164,7 +164,7 @@ def getBestBotSettings(usdt, givenBounce):
                         )
 
                         # must haves
-                        if bounce < givenBounce:
+                        if bounce > -givenBounce:
                             continue
                         # priorities
                         settings.append(
