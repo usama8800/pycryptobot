@@ -265,7 +265,7 @@ class Main:
         self.auto = False
         self.profits = False
         self.days = 30
-        self.bounce = 19
+        self.extraBounce = 0
 
         for arg in sys.argv[1:]:
             if not arg.startswith("--"):
@@ -297,10 +297,8 @@ class Main:
                     self.safetys = False
             elif key == "days":
                 self.days = int(val)
-            elif key == "bounce":
-                self.bounce = int(val)
             elif key == "extra-bounce":
-                self.bounce += int(val)
+                self.extraBounce = int(val)
             else:
                 raise KeyError(f"Unknown option '{arg}'")
 
@@ -311,6 +309,13 @@ class Main:
             if self.safetys and self.profits:
                 raise KeyError(f"Options --profits and --safetys conflict")
         self.bot = get_bot()
+        self.bounce = int(-getBounceFromSettings(
+            self.bot['safety_order_volume'],
+            self.bot['max_safety_orders'],
+            self.bot['martingale_volume_coefficient'],
+            self.bot["safety_order_step_percentage"],
+            self.bot["take_profit"],
+        )) + self.extraBounce
         self.main()
 
     def main(self):
@@ -368,9 +373,12 @@ class Main:
             lowestTPPercent,
         ) = getBestBotSettings((self.usdt + self.extraUSDT) / divideInto, self.bounce)
         if baseOrder == 0:
+            extra = ''
+            if self.extraBounce:
+                extra = f" and {self.bounce} bounce"
             print(
                 f"""Bot "{self.bot['name']}" settings for {divideInto} pairs
-with {self.usdt:.2f} USDT
+with {self.usdt:.0f} USDT{extra}
 
 Unfeasable"""
             )
