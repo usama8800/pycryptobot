@@ -184,7 +184,9 @@ def getBestBotSettings(usdt, givenBounce):
     settings.sort()
     settings = [(x[4], x[1], x[5], x[0], x[3], -x[6], -x[2]) for x in settings]
     # [print(setting) for setting in settings[-100:]]
-    return settings[-1]
+    if len(settings):
+        return settings[-1]
+    return 0,0,0,0,0,0,0
 
 
 def get_deals(coin, days=30):
