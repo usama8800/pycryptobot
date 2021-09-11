@@ -44,19 +44,18 @@ def getNeededUSDTFromSettings(
 
 
 def getBounceFromSettings(
-    safetyOrderSize,
+    safetyOrder,
     maxSafetyOrders,
-    safetyOrderVolumeDeviation,
-    safetyOrderStep,
+    safetyVariation,
+    safetyStep,
     takeProfit,
 ):
-    prices = [100 - safetyOrderStep * i for i in range(0, maxSafetyOrders + 1)]
+    prices = [100 - safetyStep * i for i in range(0, maxSafetyOrders + 1)]
+    if prices[-1] < 0:
+        return float("inf")
     volumes = [
         10,
-        *[
-            safetyOrderSize * safetyOrderVolumeDeviation ** i
-            for i in range(0, maxSafetyOrders)
-        ],
+        *[safetyOrder * safetyVariation ** i for i in range(0, maxSafetyOrders)],
     ]
     avgPrice = np.dot(prices, volumes) / sum(volumes)
     tpPrice = avgPrice * (1 + takeProfit / 100)
@@ -141,40 +140,51 @@ def printProfits(pairs, days=30):
 
 
 def getBestBotSettings(usdt, givenBounce):
-    bestSettings = (0, 0, 0, 0, 0, 0, 0)
-    for baseOrder in range(10, 11):
-        for safetyOrderSize in np.arange(baseOrder, baseOrder * 5, 0.1):
-            for safetyOrderDeviation in np.arange(1.01, 1.5, 0.01):
-                for safetyOrderStep in np.arange(1.1, 10, 0.01):
+    # base order, safety order, max safetys, safety variation, used usdt, safety step, lowest tp %
+    settings = []
+    for baseOrder in range(10, 20):
+        for safetyOrder in np.arange(baseOrder, baseOrder * 5, 0.1):
+            for safetyVariation in np.arange(1.01, 1.05, 0.01):
+                for safetyStep in np.arange(1.1, 2.4, 0.01):
                     for maxSafetyOrders in range(15, 101):
                         neededUSDT = getNeededUSDTFromSettings(
                             baseOrder,
-                            safetyOrderSize,
+                            safetyOrder,
                             maxSafetyOrders,
-                            safetyOrderDeviation,
+                            safetyVariation,
                         )
                         if neededUSDT > usdt:
                             break
                         bounce = getBounceFromSettings(
-                            safetyOrderSize,
+                            safetyOrder,
                             maxSafetyOrders,
-                            safetyOrderDeviation,
-                            safetyOrderStep,
+                            safetyVariation,
+                            safetyStep,
                             1.5,
                         )
-                        if bounce <= -givenBounce and safetyOrderSize > bestSettings[1]:
-                            bestSettings = (
-                                baseOrder,
-                                safetyOrderSize,
-                                maxSafetyOrders,
-                                safetyOrderDeviation,
+
+                        # must haves
+                        if bounce > -givenBounce:
+                            continue
+                        # priorities
+                        settings.append(
+                            (
+                                safetyVariation,
+                                safetyOrder,
+                                -bounce,
                                 neededUSDT,
-                                safetyOrderStep,
-                                bounce,
+                                baseOrder,
+                                maxSafetyOrders,
+                                -safetyStep,
                             )
+                        )
                     if maxSafetyOrders != 99:
                         break
-    return bestSettings
+    # base order, safety order, max safetys, safety variation, used usdt, safety step, lowest tp %
+    settings.sort()
+    settings = [(x[4], x[1], x[5], x[0], x[3], -x[6], -x[2]) for x in settings]
+    # [print(setting) for setting in settings[-100:]]
+    return settings[-1]
 
 
 def get_deals(coin, days=30):
