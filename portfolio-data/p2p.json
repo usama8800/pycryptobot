@@ -95,5 +95,19 @@
         "Bought At": 1.021,
         "USD In": 500,
         "PKR In": 83650
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "2021-10-05 8:30 PM",
+        "Bought At": 1.043,
+        "USD In": 500,
+        "PKR In": 88820
+    },
+    {
+        "Symbol": "USDT",
+        "Time": "2021-10-05 8:37 PM",
+        "Bought At": 1.043,
+        "USD In": 500,
+        "PKR In": 88775
     }
 ]
