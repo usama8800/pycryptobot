@@ -139,14 +139,14 @@ def printProfits(pairs, days=30):
     print(df["Profit"].sum())
 
 
-def getBestBotSettings(usdt, givenBounce):
+def getBestBotSettings(usdt, givenBounce=0, minSafetys=5):
     # base order, safety order, max safetys, safety variation, used usdt, safety step, lowest tp %
     settings = []
     for baseOrder in range(10, 20):
         for safetyOrder in np.arange(baseOrder, baseOrder * 5, 0.1):
             for safetyVariation in np.arange(1.01, 1.05, 0.01):
                 for safetyStep in np.arange(1.1, 2.4, 0.01):
-                    for maxSafetyOrders in range(15, 101):
+                    for maxSafetyOrders in range(minSafetys, 101):
                         neededUSDT = getNeededUSDTFromSettings(
                             baseOrder,
                             safetyOrder,
@@ -246,6 +246,7 @@ def get_bot(name="TA_COMPOSITE"):
             "martingale_volume_coefficient",
             "safety_order_step_percentage",
             "take_profit",
+            "max_safety_orders"
         ]
     ] = bots[
         [
@@ -254,6 +255,7 @@ def get_bot(name="TA_COMPOSITE"):
             "martingale_volume_coefficient",
             "safety_order_step_percentage",
             "take_profit",
+            "max_safety_orders"
         ]
     ].apply(
         pd.to_numeric
@@ -278,6 +280,8 @@ class Main:
         self.profits = False
         self.days = 30
         self.extraBounce = 0
+        self.bounce = 0
+        self.extraSafetys = None
 
         for arg in sys.argv[1:]:
             if not arg.startswith("--"):
@@ -310,7 +314,11 @@ class Main:
             elif key == "days":
                 self.days = int(val)
             elif key == "extra-bounce":
-                self.extraBounce = int(val)
+                self.extraBounce = float(val)
+            elif key == "bounce":
+                self.bounce = float(val)
+            elif key in ["extra-safetys", "extra-safeteys"]:
+                self.extraSafetys = int(val)
             else:
                 raise KeyError(f"Unknown option '{arg}'")
 
@@ -321,14 +329,31 @@ class Main:
             if self.safetys and self.profits:
                 raise KeyError(f"Options --profits and --safetys conflict")
         self.bot = get_bot()
-        self.bounce = int(-getBounceFromSettings(
-            self.bot['safety_order_volume'],
-            self.bot['max_safety_orders'],
-            self.bot['martingale_volume_coefficient'],
-            self.bot["safety_order_step_percentage"],
-            self.bot["take_profit"],
-        )) + self.extraBounce
+        if not self.bounce and self.extraSafetys is None:
+            self.bounce = int(-getBounceFromSettings(
+                self.bot['safety_order_volume'],
+                self.bot['max_safety_orders'],
+                self.bot['martingale_volume_coefficient'],
+                self.bot["safety_order_step_percentage"],
+                self.bot["take_profit"],
+            )) + self.extraBounce
         self.main()
+
+    def setTotalUSDT(self):
+        if self.usdt is None:
+            balances = getBalances()
+            self.usdt = balances[balances["asset"] == "USDT"]["total"].values[0]
+            resp = p3cw.request(
+                entity="deals",
+                action="",
+                payload={"bot_id": self.bot["id"], "scope": "active"},
+            )
+            deals = pd.DataFrame(resp[1])
+            deals = deals[["pair", "bought_volume", "take_profit"]]
+
+            for i in range(len(deals)):
+                deal = deals.loc[i]
+                self.usdt += float(deal['bought_volume']) * (1 + float(deal['take_profit'])/100)
 
     def main(self):
         divideInto = len(self.bot["pairs"]) + self.extraBots
@@ -358,23 +383,9 @@ class Main:
             printProfits(self.bot["pairs"], self.days)
             return
 
-        if self.usdt is None:
-            balances = getBalances()
-            self.usdt = 0
-            resp = p3cw.request(
-                entity="deals",
-                action="",
-                payload={"bot_id": self.bot["id"], "scope": "active"},
-            )
-            deals = pd.DataFrame(resp[1])
-            deals = deals[["pair", "bought_amount", "bought_volume"]]
+        self.setTotalUSDT()
+        minSafetys = None if self.extraSafetys is None else +self.bot["max_safety_orders"] + self.extraSafetys
 
-            for pair in self.bot["pairs"]:
-                pair_deals = deals[deals["pair"] == pair]["bought_volume"].values
-                if len(pair_deals):
-                    self.usdt += float(pair_deals[0])
-
-            self.usdt += balances[balances["asset"] == "USDT"]["total"].values[0]
         (
             baseOrder,
             safetyOrderSize,
@@ -383,7 +394,7 @@ class Main:
             neededUSDT,
             safetyOrderStep,
             lowestTPPercent,
-        ) = getBestBotSettings((self.usdt + self.extraUSDT) / divideInto, self.bounce)
+        ) = getBestBotSettings((self.usdt + self.extraUSDT) / divideInto, self.bounce, minSafetys)
         if baseOrder == 0:
             extra = ''
             if self.extraBounce:
