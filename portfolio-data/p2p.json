@@ -3,111 +3,111 @@
         "Symbol": "BTC",
         "Time": "21-Apr-2021 8:11 PM",
         "Bought At": 63980.28,
-        "USD In": 100.0
+        "USDT": 100.0
     },
     {
         "Symbol": "USDT",
         "Time": "24-Apr-2021 2:58 AM",
         "Bought At": 1.047,
-        "USD In": 60.0
+        "USDT": 60.0
     },
     {
         "Symbol": "USDT",
         "Time": "24-Apr-2021 3:08 AM",
         "Bought At": 1.044,
-        "USD In": 200.0
+        "USDT": 200.0
     },
     {
         "Symbol": "USDT",
         "Time": "24-Apr-2021 3:52 AM",
         "Bought At": 1.032,
-        "USD In": 500.0
+        "USDT": 500.0
     },
     {
         "Symbol": "USDT",
         "Time": "24-Apr-2021 4:04 AM",
         "Bought At": 1.031,
-        "USD In": 350.0
+        "USDT": 350.0
     },
     {
         "Symbol": "USDT",
         "Time": "02-May-2021 2:53 AM",
         "Bought At": 1.007,
-        "USD In": 468.0
+        "USDT": 468.0
     },
     {
         "Symbol": "USDT",
         "Time": "02-May-2021 4:40 AM",
         "Bought At": 1.014,
-        "USD In": 544.67
+        "USDT": 544.67
     },
     {
         "Symbol": "USDT",
         "Time": "02-May-2021 4:57 AM",
         "Bought At": 1.014,
-        "USD In": 500.0
+        "USDT": 500.0
     },
     {
         "Symbol": "USDT",
         "Time": "26-May-2021 8:18 AM",
         "Bought At": 1.056,
-        "USD In": 185.68,
+        "USDT": 185.68,
         "PKR In": 28810
     },
     {
         "Symbol": "USDT",
         "Time": "2021-05-27 8:06 PM",
         "Bought At": 1.050,
-        "USD In": 525.04,
+        "USDT": 525.04,
         "PKR In": 81250
     },
     {
         "Symbol": "USDT",
         "Time": "2021-06-27 8:52 PM",
         "Bought At": 1.038,
-        "USD In": 500,
+        "USDT": 500,
         "PKR In": 82000
     },
     {
         "Symbol": "USDT",
         "Time": "2021-06-28 5:55 AM",
         "Bought At": 1.037,
-        "USD In": 1000,
+        "USDT": 1000,
         "PKR In": 163780
     },
     {
         "Symbol": "USDT",
         "Time": "2021-07-01 8:21 PM",
         "Bought At": 1.022,
-        "USD In": 500,
+        "USDT": 500,
         "PKR In": 80805
     },
     {
         "Symbol": "USDT",
         "Time": "2021-07-01 8:39 PM",
         "Bought At": 1.022,
-        "USD In": 500,
+        "USDT": 500,
         "PKR In": 80760
     },
     {
         "Symbol": "USDT",
         "Time": "2021-08-13 11:59 PM",
         "Bought At": 1.021,
-        "USD In": 500,
+        "USDT": 500,
         "PKR In": 83650
     },
     {
         "Symbol": "USDT",
         "Time": "2021-10-05 8:30 PM",
         "Bought At": 1.043,
-        "USD In": 500,
+        "USDT": 500,
         "PKR In": 88820
     },
     {
         "Symbol": "USDT",
         "Time": "2021-10-05 8:37 PM",
         "Bought At": 1.043,
-        "USD In": 500,
+        "USDT": 500,
         "PKR In": 88775
     }
 ]

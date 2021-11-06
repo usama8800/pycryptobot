@@ -8,6 +8,7 @@ import requests
 from binance.client import Client
 from py3cw.request import Py3CW
 from tqdm import tqdm
+from enum import Enum
 
 from config import Config
 
@@ -23,6 +24,9 @@ p3cw = Py3CW(
 )
 
 
+def cmpFloat(a, b):
+    return abs(a - b) < 0.01
+
 def getBalances():
     client = Client(
         config.binance_key, config.binance_secret, {"verify": False, "timeout": 20}
@@ -36,50 +40,56 @@ def getBalances():
 
 
 def getNeededUSDTFromSettings(
-    baseOrder, safetyOrderSize, maxSafetyOrders, safetyOrderVolumeDeviation
+    bo, so, mstc, os
 ):
-    return (1 - safetyOrderVolumeDeviation ** maxSafetyOrders) / (
-        1 - safetyOrderVolumeDeviation
-    ) * safetyOrderSize + baseOrder
+    return (1 - os ** mstc) / (
+        1 - os
+    ) * so + bo
 
 
 def getBounceFromSettings(
-    safetyOrder,
-    maxSafetyOrders,
-    safetyVariation,
+    so,
+    mstc,
+    safetyVolumeScale,
     safetyStep,
     takeProfit,
+    safetyStepScale
 ):
-    prices = [100 - safetyStep * i for i in range(0, maxSafetyOrders + 1)]
+    priceDrops = [0]
+    for i in range(mstc):
+        priceDrops.append(priceDrops[-1] + safetyStep * safetyStepScale ** i)
+    prices = list(map(lambda x: 100 - x, priceDrops))
     if prices[-1] < 0:
-        return float("inf")
+        return float("inf"), float("inf")
     volumes = [
         10,
-        *[safetyOrder * safetyVariation ** i for i in range(0, maxSafetyOrders)],
+        *[so * safetyVolumeScale ** i for i in range(0, mstc)],
     ]
     avgPrice = np.dot(prices, volumes) / sum(volumes)
     tpPrice = avgPrice * (1 + takeProfit / 100)
-    return tpPrice - 100
+    return priceDrops[-1], tpPrice - 100
 
 
 def printSafetys(
-    baseOrder,
-    safetyOrderSize,
-    maxSafetyOrders,
-    safetyOrderVolumeDeviation,
-    safetyOrderPriceDeviation,
+    bo,
+    so,
+    mstc,
+    os,
+    sos,
+    ss,
     takeProfit,
 ):
     originalPrice = 100
     currentPrice = originalPrice
     buyPrices = [currentPrice]
     avgBuyPrice = currentPrice
-    needed = baseOrder + safetyOrderSize
-    buyVolumes = [baseOrder]
-    boughtCoins = baseOrder / currentPrice
+    needed = bo + so
+    buyVolumes = [bo]
+    boughtCoins = bo / currentPrice
     df = pd.DataFrame(
         {
             "Price": pd.Series([], dtype="float"),
+            "Price Drop": pd.Series([], dtype="float"),
             "Volume": pd.Series([], dtype="float"),
             "Avg Price": pd.Series([], dtype="float"),
             "TP Price": pd.Series([], dtype="float"),
@@ -90,32 +100,33 @@ def printSafetys(
     tpPrice = avgBuyPrice * (1 + takeProfit / 100)
     df.loc[0] = [
         currentPrice,
-        baseOrder,
+        0,
+        bo,
         avgBuyPrice,
         tpPrice,
         (tpPrice - originalPrice) / originalPrice * 100,
-        boughtCoins * tpPrice - baseOrder,
+        boughtCoins * tpPrice - bo,
     ]
-    for i in range(maxSafetyOrders):
+    for i in range(mstc):
         if i != 0:
-            safetyOrderSize *= safetyOrderVolumeDeviation
-            needed += safetyOrderSize
-        currentPrice -= originalPrice * safetyOrderPriceDeviation / 100
+            so *= os
+            needed += so
+        currentPrice -= originalPrice * sos * ss ** i / 100
         buyPrices.append(currentPrice)
-        buyVolumes.append(safetyOrderSize)
+        buyVolumes.append(so)
         avgBuyPrice = np.dot(buyPrices, buyVolumes) / sum(buyVolumes)
         tpPrice = avgBuyPrice * (1 + takeProfit / 100)
-        boughtCoins += safetyOrderSize / currentPrice
+        boughtCoins += so / currentPrice
         df.loc[i + 1] = [
             currentPrice,
-            safetyOrderSize,
+            originalPrice-currentPrice,
+            so,
             avgBuyPrice,
             tpPrice,
             (tpPrice - originalPrice) / originalPrice * 100,
             boughtCoins * tpPrice - sum(buyVolumes),
         ]
     print(df)
-
 
 def printProfits(pairs, days=30):
     coins = [x[5:] for x in pairs]
@@ -138,56 +149,61 @@ def printProfits(pairs, days=30):
     print(df)
     print(df["Profit"].sum())
 
-
-def getBestBotSettings(usdt, givenBounce=0, minSafetys=5):
-    # base order, safety order, max safetys, safety variation, used usdt, safety step, lowest tp %
+def getBestBotSettings(usdt, givenBounce=0, minSafetys=7):
+    # base order, safety order, max safetys, safety volume scale, used usdt, safety step, safety step scale, lowest tp %
+    if minSafetys is None:
+        minSafetys = 7
     settings = []
-    for baseOrder in range(10, 20):
-        for safetyOrder in np.arange(baseOrder, baseOrder * 5, 0.1):
-            for safetyVariation in np.arange(1.01, 1.05, 0.01):
-                for safetyStep in np.arange(1.1, 2.4, 0.01):
-                    for maxSafetyOrders in range(minSafetys, 101):
-                        neededUSDT = getNeededUSDTFromSettings(
-                            baseOrder,
-                            safetyOrder,
-                            maxSafetyOrders,
-                            safetyVariation,
-                        )
-                        if neededUSDT > usdt:
-                            break
-                        bounce = getBounceFromSettings(
-                            safetyOrder,
-                            maxSafetyOrders,
-                            safetyVariation,
-                            safetyStep,
-                            1.5,
-                        )
-
-                        # must haves
-                        if bounce > -givenBounce:
-                            continue
-                        # priorities
-                        settings.append(
-                            (
-                                safetyVariation,
-                                safetyOrder,
-                                -bounce,
-                                neededUSDT,
-                                baseOrder,
-                                maxSafetyOrders,
-                                -safetyStep,
+    for bo in range(10, 20):
+        for so in (np.arange(bo, bo * 3, 0.1)):
+            for safetyVolumeScale in np.arange(1.01, 2, 0.01):
+                for safetyStep in np.arange(1.1, 3, 0.01):
+                    for safetyStepScale in np.arange(1, 1.501, 0.01):
+                        for mstc in range(minSafetys, 101):
+                            neededUSDT = getNeededUSDTFromSettings(
+                                bo,
+                                so,
+                                mstc,
+                                safetyVolumeScale,
                             )
-                        )
-                    if maxSafetyOrders != 99:
-                        break
-    # base order, safety order, max safetys, safety variation, used usdt, safety step, lowest tp %
+                            if neededUSDT > usdt:
+                                break
+                            _, bounce = getBounceFromSettings(
+                                so,
+                                mstc,
+                                safetyVolumeScale,
+                                safetyStep,
+                                1.5,
+                                safetyStepScale
+                            )
+
+                            # must haves
+                            if bounce > -givenBounce:
+                                continue
+                            # priorities
+                            settings.append(
+                                (
+                                    safetyVolumeScale,
+                                    so,
+                                    -bounce,
+                                    neededUSDT,
+                                    bo,
+                                    mstc,
+                                    safetyStepScale
+                                    -safetyStep,
+                                )
+                            )
+                        if mstc < 100:
+                            break
+
+
+    # base order, safety order, max safetys, safety volume scale, used usdt, safety step, safety step scale, lowest tp %
     settings.sort()
-    settings = [(x[4], x[1], x[5], x[0], x[3], -x[6], -x[2]) for x in settings]
+    settings = [(x[4], x[1], x[5], x[0], x[3], -x[7], x[6], -x[2]) for x in settings]
     # [print(setting) for setting in settings[-100:]]
     if len(settings):
         return settings[-1]
-    return 0,0,0,0,0,0,0
-
+    return 0,0,0,0,0,0,0,0
 
 def get_deals(coin, days=30):
     now = datetime.now()
@@ -229,7 +245,6 @@ def get_deals(coin, days=30):
         )
     return (True, deals)
 
-
 def get_bot(name="TA_COMPOSITE"):
     resp = p3cw.request(
         entity="bots",
@@ -241,32 +256,52 @@ def get_bot(name="TA_COMPOSITE"):
     bots.reset_index(inplace=True, drop=True)
     bots[
         [
-            "base_order_volume",
-            "safety_order_volume",
-            "martingale_volume_coefficient",
-            "safety_order_step_percentage",
-            "take_profit",
-            "max_safety_orders"
+            "id",
+            str(Properties.BO),
+            str(Properties.SO),
+            str(Properties.OS),
+            str(Properties.SS),
+            str(Properties.SOS),
+            str(Properties.TP),
+            str(Properties.MSTC),
+            "max_active_deals",
+            "active_safety_orders_count",
         ]
     ] = bots[
         [
-            "base_order_volume",
-            "safety_order_volume",
-            "martingale_volume_coefficient",
-            "safety_order_step_percentage",
-            "take_profit",
-            "max_safety_orders"
+            "id",
+            str(Properties.BO),
+            str(Properties.SO),
+            str(Properties.OS),
+            str(Properties.SS),
+            str(Properties.SOS),
+            str(Properties.TP),
+            str(Properties.MSTC),
+            "max_active_deals",
+            "active_safety_orders_count",
         ]
     ].apply(
         pd.to_numeric
     )
     return bots.loc[0]
 
-
 def fullPrint(df, rows=None, cols=None):
     with pd.option_context("display.max_rows", rows, "display.max_columns", cols):
         print(df)
 
+class Properties(Enum):
+    BO = 'base_order_volume'
+    SO = 'safety_order_volume'
+    OS = 'martingale_volume_coefficient'
+    SS = 'martingale_step_coefficient'
+    SOS = 'safety_order_step_percentage'
+    TP = 'take_profit'
+    MSTC = 'max_safety_orders'
+
+    def __str__(self) -> str:
+        return self.value
+    def __repr__(self) -> str:
+        return self.value
 
 class Main:
     def __init__(self):
@@ -282,6 +317,7 @@ class Main:
         self.extraBounce = 0
         self.bounce = 0
         self.extraSafetys = None
+        self.onlySafetyOrder = False
 
         for arg in sys.argv[1:]:
             if not arg.startswith("--"):
@@ -319,6 +355,12 @@ class Main:
                 self.bounce = float(val)
             elif key in ["extra-safetys", "extra-safeteys"]:
                 self.extraSafetys = int(val)
+            elif key.startswith("o-") or key.startswith("only-"):
+                key = key[key.index("-")+1:]
+                if key == "so":
+                    self.onlySafetyOrder = int(val) == 1
+                else:
+                    raise KeyError(f"Unknown property '{key}'")
             else:
                 raise KeyError(f"Unknown option '{arg}'")
 
@@ -329,19 +371,30 @@ class Main:
             if self.safetys and self.profits:
                 raise KeyError(f"Options --profits and --safetys conflict")
         self.bot = get_bot()
+        self.numBots = self.bot["max_active_deals"] + self.extraBots
         if not self.bounce and self.extraSafetys is None:
             self.bounce = int(-getBounceFromSettings(
                 self.bot['safety_order_volume'],
                 self.bot['max_safety_orders'],
                 self.bot['martingale_volume_coefficient'],
-                self.bot["safety_order_step_percentage"],
-                self.bot["take_profit"],
-            )) + self.extraBounce
+                self.bot[str(Properties.SOS)],
+                self.bot[str(Properties.TP)],
+                self.bot[str(Properties.SS)],
+            )[1]) + self.extraBounce
         self.main()
 
     def setTotalUSDT(self):
         if self.usdt is None:
             balances = getBalances()
+            bnb = balances[balances["asset"] == "BNB"]["total"].values[0]
+            if bnb < 10:
+                res = requests.post(
+                    config.discordHook,
+                    {
+                        "content": f"""{bnb} BNB left!!!!"""
+                    },
+                )
+                
             self.usdt = balances[balances["asset"] == "USDT"]["total"].values[0]
             resp = p3cw.request(
                 entity="deals",
@@ -349,33 +402,47 @@ class Main:
                 payload={"bot_id": self.bot["id"], "scope": "active"},
             )
             deals = pd.DataFrame(resp[1])
-            deals = deals[["pair", "bought_volume", "take_profit"]]
+            deals = deals[["pair", "bought_volume", str(Properties.TP)]]
 
             for i in range(len(deals)):
                 deal = deals.loc[i]
                 self.usdt += float(deal['bought_volume']) * (1 + float(deal['take_profit'])/100)
 
-    def main(self):
-        divideInto = len(self.bot["pairs"]) + self.extraBots
+    def getBotSettingsChangeOnlyOneProperty(self, property):
+        usdtPerBot = (self.usdt + self.extraUSDT) / self.numBots
+        if property == Properties.SO:
+            for val in (np.arange(self.bot[str(Properties.SO)], self.bot[str(Properties.BO)] * 3, 0.1)):
+                neededUSDT = getNeededUSDTFromSettings(
+                    self.bot[str(Properties.BO)],
+                    val,
+                    self.bot[str(Properties.MSTC)],
+                    self.bot[str(Properties.OS)],
+                )
+                if neededUSDT > usdtPerBot:
+                    break
+        return val
 
+
+    def main(self):
         if self.needed:
             needed = getNeededUSDTFromSettings(
-                self.bot["base_order_volume"],
-                self.bot["safety_order_volume"],
-                self.bot["max_safety_orders"],
-                self.bot["martingale_volume_coefficient"],
+                self.bot[str(Properties.BO)],
+                self.bot[str(Properties.SO)],
+                self.bot[str(Properties.MSTC)],
+                self.bot[str(Properties.OS)],
             )
-            print(f"{needed*divideInto:.2f}")
+            print(f"{needed*self.self.numBots:.2f}")
             return
 
         if self.safetys:
             printSafetys(
-                self.bot["base_order_volume"],
-                self.bot["safety_order_volume"],
-                self.bot["max_safety_orders"],
-                self.bot["martingale_volume_coefficient"],
-                self.bot["safety_order_step_percentage"],
-                self.bot["take_profit"],
+                self.bot[str(Properties.BO)],
+                self.bot[str(Properties.SO)],
+                self.bot[str(Properties.MSTC)],
+                self.bot[str(Properties.OS)],
+                self.bot[str(Properties.SOS)],
+                self.bot[str(Properties.SS)],
+                self.bot[str(Properties.TP)],
             )
             return
 
@@ -384,23 +451,47 @@ class Main:
             return
 
         self.setTotalUSDT()
-        minSafetys = None if self.extraSafetys is None else +self.bot["max_safety_orders"] + self.extraSafetys
+        minSafetys = None if self.extraSafetys is None else +self.bot[str(Properties.MSTC)] + self.extraSafetys
 
         (
-            baseOrder,
-            safetyOrderSize,
-            maxSafetyOrders,
-            safetyOrderDeviation,
+            bo,
+            so,
+            mstc,
+            os,
             neededUSDT,
-            safetyOrderStep,
+            sos,
+            ss,
             lowestTPPercent,
-        ) = getBestBotSettings((self.usdt + self.extraUSDT) / divideInto, self.bounce, minSafetys)
-        if baseOrder == 0:
+        ) = (
+            self.bot[str(Properties.BO)],
+            self.bot[str(Properties.SO)],
+            self.bot[str(Properties.MSTC)],
+            self.bot[str(Properties.OS)],
+            getNeededUSDTFromSettings(self.bot[str(Properties.BO)], self.bot[str(Properties.SO)], self.bot[str(Properties.MSTC)], self.bot[str(Properties.OS)]),
+            self.bot[str(Properties.SOS)],
+            self.bot[str(Properties.SS)],
+            getBounceFromSettings(self.bot[str(Properties.SO)], self.bot[str(Properties.MSTC)], self.bot[str(Properties.OS)], self.bot[str(Properties.SOS)], self.bot[str(Properties.TP)], self.bot[str(Properties.SS)])[1]
+        )
+        if self.onlySafetyOrder:
+            so = self.getBotSettingsChangeOnlyOneProperty(Properties.SO)
+        else:
+            (
+                bo,
+                so,
+                mstc,
+                os,
+                neededUSDT,
+                sos,
+                ss,
+                lowestTPPercent,
+            ) = getBestBotSettings((self.usdt + self.extraUSDT) / self.numBots, self.bounce, minSafetys)
+
+        if bo == 0:
             extra = ''
             if self.extraBounce:
                 extra = f" and {self.bounce} bounce"
             print(
-                f"""Bot "{self.bot['name']}" settings for {divideInto} pairs
+                f"""Bot "{self.bot['name']}" settings for {self.numBots} pairs
 with {self.usdt:.0f} USDT{extra}
 
 Unfeasable"""
@@ -409,47 +500,48 @@ Unfeasable"""
 
         if self.safetys is None:
             printSafetys(
-                baseOrder,
-                safetyOrderSize,
-                maxSafetyOrders,
-                safetyOrderDeviation,
-                safetyOrderStep,
-                self.bot["take_profit"],
+                bo,
+                so,
+                mstc,
+                os,
+                sos,
+                ss,
+                self.bot[str(Properties.TP)],
             )
             print()
+
         content = f"""
-Base Order:             {baseOrder}
-Safety Order Size:      {safetyOrderSize:.2f}
-Safety Order Variation: {safetyOrderDeviation:.2f}
-Safety Order Step:      {safetyOrderStep:.2f}
-Max Safety Order:       {maxSafetyOrders}
-Using $ / bot:          {neededUSDT:.2f}
-Using $:                {neededUSDT*divideInto:.2f} / {self.usdt:.2f}
-Lowest Take Profit %:   {lowestTPPercent:.2f}"""
+Base Order:                {bo}
+Safety Order Size:         {so:.2f}
+Safety Order Volume Scale: {os:.2f}
+Safety Order Step:         {sos:.2f}
+Safety Order Step Scale:   {ss:.2f}
+Max Safety Order:          {mstc}
+Using $ / bot:             {neededUSDT:.2f}
+Using $:                   {neededUSDT*self.numBots:.2f} / {self.usdt:.2f}
+Lowest Take Profit %:      {lowestTPPercent:.2f}"""
         if self.auto:
             res = requests.post(
                 config.discordHook,
                 {
-                    "content": f"""Bot `{self.bot['name']}` settings for `{divideInto}` pairs\n```{content}```"""
+                    "content": f"""Bot `{self.bot['name']}` settings for `{self.numBots}` pairs\n```{content}```"""
                 },
             )
         else:
-            print(f"""Bot "{self.bot['name']}" settings for {divideInto} pairs""")
+            print(f"""Bot "{self.bot['name']}" settings for {self.numBots} pairs""")
             print(content)
 
-        def cmpFloat(a, b):
-            return abs(a - b) < 0.01
-
         allSame = (
-            cmpFloat(baseOrder, float(self.bot["base_order_volume"]))
-            and cmpFloat(safetyOrderSize, float(self.bot["safety_order_volume"]))
+            cmpFloat(bo, self.bot[str(Properties.BO)])
+            and cmpFloat(so, self.bot[str(Properties.SO)])
             and cmpFloat(
-                safetyOrderDeviation, float(self.bot["martingale_volume_coefficient"])
+                os, self.bot[str(Properties.OS)]
             )
-            and maxSafetyOrders == int(self.bot["max_safety_orders"])
+            and mstc == self.bot[str(Properties.MSTC)]
             and cmpFloat(
-                safetyOrderStep, float(self.bot["safety_order_step_percentage"])
+                sos, self.bot[str(Properties.SOS)]
             )
+            and cmpFloat(ss, self.bot[str(Properties.SS)])
         )
         if not self.live or allSame:
             return
@@ -460,22 +552,18 @@ Lowest Take Profit %:   {lowestTPPercent:.2f}"""
             payload={
                 "name": self.bot["name"],
                 "pairs": self.bot["pairs"],
-                "max_active_deals": int(self.bot["max_active_deals"]),
-                "base_order_volume": baseOrder,
-                "take_profit": self.bot["take_profit"],
-                "safety_order_volume": safetyOrderSize,
-                "martingale_volume_coefficient": safetyOrderDeviation,
-                "martingale_step_coefficient": float(
-                    self.bot["martingale_step_coefficient"]
-                ),
-                "max_safety_orders": maxSafetyOrders,
-                "active_safety_orders_count": int(
-                    self.bot["active_safety_orders_count"]
-                ),
-                "safety_order_step_percentage": safetyOrderStep,
+                "max_active_deals": self.numBots,
+                Properties.BO: bo,
+                Properties.TP: self.bot[str(Properties.TP)],
+                Properties.SO: so,
+                Properties.OS: os,
+                Properties.SS: ss,
+                Properties.MSTC: mstc,
+                "active_safety_orders_count": self.bot["active_safety_orders_count"],
+                Properties.SOS: sos,
                 "take_profit_type": self.bot["take_profit_type"],
                 "strategy_list": self.bot["strategy_list"],
-                "bot_id": int(self.bot["id"]),
+                "bot_id": self.bot["id"],
             },
         )
         if len(resp[0].keys()) == 0:
@@ -495,7 +583,7 @@ Lowest Take Profit %:   {lowestTPPercent:.2f}"""
                 res = requests.post(
                     config.discordHook,
                     {
-                        "content": f"""Bot `{self.bot['name']}` updated for `{divideInto}` pairs\n```{content}```"""
+                        "content": f"""Bot `{self.bot['name']}` updated for `{self.numBots}` pairs\n```{content}```"""
                     },
                 )
         else:

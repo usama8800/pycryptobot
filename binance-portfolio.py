@@ -23,7 +23,8 @@ config = Config()
 client = Client(
     config.binance_key, config.binance_secret, {"verify": False, "timeout": 20}
 )
-extraRows = ["Fees", "Lost", "Withdraws"]
+extraRows = ["Lost", "Withdraws"]
+shownRows = ["BTC", "ETH", "LTC", "USDT", "BNB"]
 tradefees = 0.00075
 logging.basicConfig(
     filename="./portfolio-data/history.log",
@@ -34,8 +35,9 @@ logging.basicConfig(
     force=True,
     encoding="utf-8",
 )
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 try:
-    with open("./portfolio-data/history/prices.json", "r") as openfile:
+    with open("./portfolio-data/prices.json", "r") as openfile:
         prices = json.load(openfile)
 except FileNotFoundError:
     prices = {}
@@ -84,237 +86,97 @@ def getPriceAtTime(symbol: str, endTime=time.time() * 1000, save=False):
     return float(res[0][4])
 
 
-def getAllOrders(symbol: str) -> DataFrame:
-    resp = None
-    try:
-        df = pd.read_json(f"./portfolio-data/history/{symbol}.json")
-    except:
-        df = pd.DataFrame()
-    if len(df) == 0:
-        while True:
-            try:
-                resp = client.get_all_orders(symbol=symbol + "USDT", limit=1000)
-            except BinanceAPIException as e:
-                print(e)
-                time.sleep(3)
-                continue
-            break
-        df = pd.DataFrame(resp)
-    while resp is None or len(resp) > 0:
-        while True:
-            try:
-                resp = client.get_all_orders(
-                    symbol=symbol + "USDT", endTime=df.loc[0]["time"] - 1, limit=1000
-                )
-            except BinanceAPIException as e:
-                print(e)
-                time.sleep(3)
-                continue
-            break
-        df = df.append(pd.DataFrame(resp))
-        df.sort_values(by=["time"], inplace=True)
-        df.reset_index(inplace=True, drop=True)
-    if len(df) == 0:
-        return df
-
-    df = df[["executedQty", "cummulativeQuoteQty", "side", "updateTime", "time"]]
-    df[["executedQty", "cummulativeQuoteQty"]] = df[
-        ["executedQty", "cummulativeQuoteQty"]
-    ].apply(pd.to_numeric)
-    df = df[df["cummulativeQuoteQty"] > 0]
-    df.reset_index(inplace=True, drop=True)
-    df.to_json(f"./portfolio-data/history/{symbol}.json")
-    return df
-
-
 def getBalances():
     accountInfo = client.get_account()
     balances = pd.DataFrame(accountInfo["balances"])
     balances[["free", "locked"]] = balances[["free", "locked"]].apply(pd.to_numeric)
     balances = balances[(balances["free"] > 0) | (balances["locked"] > 0)]
+    balances["total"] = balances["free"] + balances["locked"]
     return balances
-
-
-def getWithdraws():
-    hist = None
-    try:
-        df = pd.read_json(f"./portfolio-data/history/withdraws.json")
-    except:
-        df = pd.DataFrame()
-    # if len(df) == 0:
-    #     hist = client.get_withdraw_history(status=6, limit=1000)
-    #     df = pd.DataFrame(hist)
-    # while hist is None or len(hist) > 0:
-    #     hist = client.get_withdraw_history(
-    #         status=6,
-    #         limit=1000,
-    #         startTime=int(pd.to_datetime(df.loc[0]["applyTime"]).timestamp() - 1)
-    #         * 1000,
-    #     )
-    #     df = df.append(pd.DataFrame(hist))
-    #     df.sort_values(by="applyTime", inplace=True)
-    #     df.reset_index(drop=True, inplace=True)
-    df[["amount", "transactionFee"]] = df[["amount", "transactionFee"]].apply(
-        pd.to_numeric
-    )
-    df.to_json(f"./portfolio-data/history/withdraws.json")
-    return df
-
-
-def getDusts():
-    dusts = None
-    # try:
-    #     df = pd.read_json(f"./portfolio-data/history/dusts.json")
-    # except:
-    #     df = pd.DataFrame()
-    # if len(df) == 0:
-    dusts = client.get_dust_log()
-    df = pd.DataFrame(
-        columns=[
-            "amount",
-            "fromAsset",
-            "operateTime",
-            "serviceChargeAmount",
-            "transferedAmount",
-        ]
-    )
-    for dustTrans in dusts["userAssetDribblets"]:
-        df = df.append(dustTrans["userAssetDribbletDetails"])
-    # while len(dusts["results"]["rows"]) > 0:
-    #     # TODO Confirm 0 or -1 for earliest time
-    #     dusts = client.get_dust_log(
-    #         endTime=dusts["results"]["rows"][0]["logs"][0]["operateTime"] - 1
-    #     )
-    #     df = df.append(pd.DataFrame(dusts))
-    df = df.reset_index()
-    df[["amount", "transferedAmount", "serviceChargeAmount"]] = df[
-        ["amount", "transferedAmount", "serviceChargeAmount"]
-    ].apply(pd.to_numeric)
-    df[["operateTime"]] = df[["operateTime"]].apply(pd.to_datetime, unit="ms")
-    # df.to_json(f"./portfolio-data/history/dusts.json")
-    return df
 
 
 def calculateUSD(row):
     return row["Amount"] * getPriceAtTime(row.name)
 
 
-def calculateProfit(row):
-    return row["USD Out"] - row["USD In"]
-
-
 def main():
     p2p: DataFrame = pd.read_json("./portfolio-data/p2p.json", convert_dates=["Time"])
     p2pSum = p2p.sum(0)
-    print(f"""P2P In: {p2pSum["USD In"]:.0f}""")
 
-    converts: DataFrame = pd.read_json(
-        "./portfolio-data/converts.json", convert_dates=["Time"]
-    )
-    knownSymbols: DataFrame = pd.read_json("./portfolio-data/symbols.json")
+    # converts: DataFrame = pd.read_json(
+    #     "./portfolio-data/converts.json", convert_dates=["Time"]
+    # )
     balances = getBalances()
     allSymbols = np.unique(
         np.concatenate(
             (
-                p2p["Symbol"].unique(),
-                converts["To Symbol"].unique(),
+                p2p["Symbol"],
+                # converts["To Symbol"],
                 balances["asset"],
                 extraRows,
-                knownSymbols[0],
             ),
         )
     )
-    zeros = np.zeros_like(allSymbols)
+    zeros = np.zeros_like(allSymbols, float)
     portfolio = pd.DataFrame(
-        {key: zeros for key in ["USD In", "Amount"]}, index=allSymbols
+        # {key: zeros for key in ["Amount", "USDT"]}, index=allSymbols
+        {key: zeros for key in ["Amount"]}, index=allSymbols
     )
 
-    for i, dust in getDusts().iterrows():
-        try:
-            portfolio.loc[dust["fromAsset"]]
-        except KeyError:
-            portfolio.loc[dust["fromAsset"]] = 0
-        portfolio.loc[dust["fromAsset"]]["Amount"] -= dust["amount"]
-        portfolio.loc[dust["fromAsset"]]["USD In"] -= dust["amount"] * getPriceAtTime(
-            dust["fromAsset"], dust["operateTime"], True
-        )
-        bnbPrice = getPriceAtTime("BNB", dust["operateTime"], True)
-        portfolio.loc["BNB"]["Amount"] += dust["transferedAmount"]
-        portfolio.loc["BNB"]["USD In"] += dust["transferedAmount"] * bnbPrice
-        portfolio.loc["Fees"]["USD In"] += dust["serviceChargeAmount"] * bnbPrice
+    # # P2P coins
+    # for i, v in p2p.iterrows():
+    #     portfolio.loc[v["Symbol"]]["USDT"] += v["USDT"]
+    #     portfolio.loc[v["Symbol"]]["Amount"] += v["USDT"] / v["Bought At"]
 
-    for i, v in p2p.iterrows():
-        portfolio.loc[v["Symbol"]]["USD In"] += v["USD In"]
-        portfolio.loc[v["Symbol"]]["Amount"] += v["USD In"] / v["Bought At"]
-    for i, v in converts.iterrows():
-        portfolio.loc[v["From Symbol"]]["Amount"] -= v["From Amount"]
-        portfolio.loc[v["To Symbol"]]["Amount"] += v["To Amount"]
+    # # Converts coins
+    # for i, v in converts.iterrows():
 
-        portfolio.loc[v["From Symbol"]]["USD In"] -= v["From Amount"] * getPriceAtTime(
-            v["From Symbol"], v["Time"], True
-        )
-        portfolio.loc[v["To Symbol"]]["USD In"] += v["To Amount"] * getPriceAtTime(
-            v["To Symbol"], v["Time"], True
-        )
+    #     if v["From Symbol"] in allSymbols:
+    #         portfolio.loc[v["From Symbol"]]["Amount"] -= v["From Amount"]
+    #         portfolio.loc[v["From Symbol"]]["USDT"] -= v["From Amount"] * getPriceAtTime(
+    #             v["From Symbol"], v["Time"], True
+    #         )
 
+    #     if v["To Symbol"] in allSymbols:
+    #         portfolio.loc[v["To Symbol"]]["Amount"] += v["To Amount"]
+
+    #         portfolio.loc[v["To Symbol"]]["USDT"] += v["To Amount"] * getPriceAtTime(
+    #             v["To Symbol"], v["Time"], True
+    #     )
+
+    # Balances coins
+    balanceSum = 0
     for symbol in portfolio.index:
+        balance = balances.loc[balances["asset"]==symbol]
+        if len(balance) == 0:
+            continue
+        total = balance["total"].values[0]
         if symbol in extraRows or symbol == "USDT":
+            balanceSum += total
             continue
-        print(symbol)
+        usd = total * getPriceAtTime(symbol)
+        portfolio.loc[symbol]["Amount"] = total
+        portfolio.loc[symbol]["USDT"] = usd
+        balanceSum += usd
 
-        orders = getAllOrders(symbol)
-        if len(orders) == 0:
-            continue
-        for i, v in orders.iterrows():
-            if v["side"] == "BUY":
-                portfolio.loc[symbol]["USD In"] += v["cummulativeQuoteQty"]
-                portfolio.loc[symbol]["Amount"] += v["executedQty"]
-                portfolio.loc["USDT"]["USD In"] -= v["cummulativeQuoteQty"]
-                portfolio.loc["USDT"]["Amount"] -= v["cummulativeQuoteQty"]
-            else:
-                portfolio.loc[symbol]["USD In"] -= v["cummulativeQuoteQty"]
-                portfolio.loc[symbol]["Amount"] -= v["executedQty"]
-                portfolio.loc["USDT"]["USD In"] += v["cummulativeQuoteQty"]
-                portfolio.loc["USDT"]["Amount"] += v["cummulativeQuoteQty"]
-            portfolio.loc["Fees"]["USD In"] += v["cummulativeQuoteQty"] * tradefees
-            portfolio.loc["BNB"]["USD In"] -= v["cummulativeQuoteQty"] * tradefees
-            portfolio.loc["BNB"]["Amount"] -= (
-                v["cummulativeQuoteQty"]
-                * tradefees
-                / getPriceAtTime("BNB", v["updateTime"], True)
-            )
-
-    for i, withdraw in getWithdraws().iterrows():
-        price = getPriceAtTime(withdraw["coin"], withdraw["applyTime"], True)
-        portfolio.loc[withdraw["coin"]]["Amount"] -= withdraw["amount"]
-        portfolio.loc[withdraw["coin"]]["USD In"] -= withdraw["amount"] * price
-        portfolio.loc["Fees"]["USD In"] += withdraw["transactionFee"]
-        portfolio.loc["Withdraws"]["USD In"] += withdraw["amount"] * price
-
-    # for i, deposit in getDeposits().iterrows():
-    #     price
-
-    portfolio.loc["Lost"]["USD In"] = 200
-    portfolio["USD Out"] = portfolio.apply(calculateUSD, axis=1)
-    portfolio["Profit"] = portfolio.apply(calculateProfit, axis=1)
-    portfolio = portfolio.sort_values("Profit", ascending=False)
-    sums = portfolio.sum(0)
-    usdIn = (
-        sums["USD In"]
-        + portfolio.loc["USDT"]["Profit"]
-        + portfolio.loc["Lost"]["Profit"]
-        + portfolio.loc["Withdraws"]["Profit"]
-    )
+    # Final touches
+    portfolio.loc["Withdraws"]["USDT"] = 80
+    portfolio.loc["Lost"]["USDT"] = 200
+    # if shownRows:
+    #     portfolio = portfolio.filter(items=[*extraRows, *shownRows], axis=0)
+    portfolio = portfolio.filter(items=[], axis=0)
+    # portfolio = portfolio.sort_values("USDT", ascending=False)
+    # portfolio.loc[""] = ''
+    # portfolio.loc["P2P In"] = [p2pSum["USDT"], '']
+    # portfolio.loc["Balance"] = [balanceSum, '']
+    # portfolio.loc["Profit"] = [balanceSum-p2pSum["USDT"], '']
+    portfolio.loc["P2P In"] = p2pSum["USDT"]
+    portfolio.loc["Balance"] = balanceSum
+    portfolio.loc["Profit"] = balanceSum-p2pSum["USDT"]
     fullPrint(portfolio)
-    log()
-    log(f"Invested      {sums['USD In']}")
-    log(f"USD In   {usdIn}")
-    log(f"USD Out  {sums['USD Out']}")
-    log(f"Profit   {sums['USD Out']-usdIn}")
-    log(f"Actual Profit {sums['USD Out'] - sums['USD In']}")
-
+    
     json_object = json.dumps(prices, indent=4)
-    with open("./portfolio-data/history/prices.json", "w+") as outfile:
+    with open("./portfolio-data/prices.json", "w+") as outfile:
         outfile.write(json_object)
 
 

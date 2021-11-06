@@ -2,7 +2,6 @@
 .idea/
 .history
 portfolio-data/history.log
-portfolio-data/history/*.json
 ~*
 
 cache
