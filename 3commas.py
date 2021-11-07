@@ -27,10 +27,24 @@ p3cw = Py3CW(
 def cmpFloat(a, b):
     return abs(a - b) < 0.01
 
-def getBalances():
-    client = Client(
-        config.binance_key, config.binance_secret, {"verify": False, "timeout": 20}
+
+def getPrice(client, symbol: str):
+    if symbol in ["USDT"]:
+        return 1
+    endTime = int(time.time() * 1000)
+    # ['Open Time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close Time', '', '', '', '', '']
+    res = client.get_klines(
+        symbol=symbol + "USDT",
+        interval="1m",
+        limit=1,
+        endTime=endTime,
     )
+    if len(res) == 0:
+        return float("inf")
+    return float(res[0][4])
+
+
+def getBalances(client):
     accountInfo = client.get_account()
     balances = pd.DataFrame(accountInfo["balances"])
     balances[["free", "locked"]] = balances[["free", "locked"]].apply(pd.to_numeric)
@@ -39,21 +53,12 @@ def getBalances():
     return balances
 
 
-def getNeededUSDTFromSettings(
-    bo, so, mstc, os
-):
-    return (1 - os ** mstc) / (
-        1 - os
-    ) * so + bo
+def getNeededUSDTFromSettings(bo, so, mstc, os):
+    return (1 - os ** mstc) / (1 - os) * so + bo
 
 
 def getBounceFromSettings(
-    so,
-    mstc,
-    safetyVolumeScale,
-    safetyStep,
-    takeProfit,
-    safetyStepScale
+    so, mstc, safetyVolumeScale, safetyStep, takeProfit, safetyStepScale
 ):
     priceDrops = [0]
     for i in range(mstc):
@@ -119,7 +124,7 @@ def printSafetys(
         boughtCoins += so / currentPrice
         df.loc[i + 1] = [
             currentPrice,
-            originalPrice-currentPrice,
+            originalPrice - currentPrice,
             so,
             avgBuyPrice,
             tpPrice,
@@ -127,6 +132,7 @@ def printSafetys(
             boughtCoins * tpPrice - sum(buyVolumes),
         ]
     print(df)
+
 
 def printProfits(pairs, days=30):
     coins = [x[5:] for x in pairs]
@@ -149,13 +155,14 @@ def printProfits(pairs, days=30):
     print(df)
     print(df["Profit"].sum())
 
+
 def getBestBotSettings(usdt, givenBounce=0, minSafetys=7):
     # base order, safety order, max safetys, safety volume scale, used usdt, safety step, safety step scale, lowest tp %
     if minSafetys is None:
         minSafetys = 7
     settings = []
     for bo in range(10, 20):
-        for so in (np.arange(bo, bo * 3, 0.1)):
+        for so in np.arange(bo, bo * 3, 0.1):
             for safetyVolumeScale in np.arange(1.01, 2, 0.01):
                 for safetyStep in np.arange(1.1, 3, 0.01):
                     for safetyStepScale in np.arange(1, 1.501, 0.01):
@@ -174,7 +181,7 @@ def getBestBotSettings(usdt, givenBounce=0, minSafetys=7):
                                 safetyVolumeScale,
                                 safetyStep,
                                 1.5,
-                                safetyStepScale
+                                safetyStepScale,
                             )
 
                             # must haves
@@ -189,13 +196,11 @@ def getBestBotSettings(usdt, givenBounce=0, minSafetys=7):
                                     neededUSDT,
                                     bo,
                                     mstc,
-                                    safetyStepScale
-                                    -safetyStep,
+                                    safetyStepScale - safetyStep,
                                 )
                             )
                         if mstc < 100:
                             break
-
 
     # base order, safety order, max safetys, safety volume scale, used usdt, safety step, safety step scale, lowest tp %
     settings.sort()
@@ -203,7 +208,8 @@ def getBestBotSettings(usdt, givenBounce=0, minSafetys=7):
     # [print(setting) for setting in settings[-100:]]
     if len(settings):
         return settings[-1]
-    return 0,0,0,0,0,0,0,0
+    return 0, 0, 0, 0, 0, 0, 0, 0
+
 
 def get_deals(coin, days=30):
     now = datetime.now()
@@ -245,6 +251,7 @@ def get_deals(coin, days=30):
         )
     return (True, deals)
 
+
 def get_bot(name="TA_COMPOSITE"):
     resp = p3cw.request(
         entity="bots",
@@ -285,23 +292,27 @@ def get_bot(name="TA_COMPOSITE"):
     )
     return bots.loc[0]
 
+
 def fullPrint(df, rows=None, cols=None):
     with pd.option_context("display.max_rows", rows, "display.max_columns", cols):
         print(df)
 
+
 class Properties(Enum):
-    BO = 'base_order_volume'
-    SO = 'safety_order_volume'
-    OS = 'martingale_volume_coefficient'
-    SS = 'martingale_step_coefficient'
-    SOS = 'safety_order_step_percentage'
-    TP = 'take_profit'
-    MSTC = 'max_safety_orders'
+    BO = "base_order_volume"
+    SO = "safety_order_volume"
+    OS = "martingale_volume_coefficient"
+    SS = "martingale_step_coefficient"
+    SOS = "safety_order_step_percentage"
+    TP = "take_profit"
+    MSTC = "max_safety_orders"
 
     def __str__(self) -> str:
         return self.value
+
     def __repr__(self) -> str:
         return self.value
+
 
 class Main:
     def __init__(self):
@@ -356,7 +367,7 @@ class Main:
             elif key in ["extra-safetys", "extra-safeteys"]:
                 self.extraSafetys = int(val)
             elif key.startswith("o-") or key.startswith("only-"):
-                key = key[key.index("-")+1:]
+                key = key[key.index("-") + 1 :]
                 if key == "so":
                     self.onlySafetyOrder = int(val) == 1
                 else:
@@ -373,28 +384,37 @@ class Main:
         self.bot = get_bot()
         self.numBots = self.bot["max_active_deals"] + self.extraBots
         if not self.bounce and self.extraSafetys is None:
-            self.bounce = int(-getBounceFromSettings(
-                self.bot['safety_order_volume'],
-                self.bot['max_safety_orders'],
-                self.bot['martingale_volume_coefficient'],
-                self.bot[str(Properties.SOS)],
-                self.bot[str(Properties.TP)],
-                self.bot[str(Properties.SS)],
-            )[1]) + self.extraBounce
+            self.bounce = (
+                int(
+                    -getBounceFromSettings(
+                        self.bot["safety_order_volume"],
+                        self.bot["max_safety_orders"],
+                        self.bot["martingale_volume_coefficient"],
+                        self.bot[str(Properties.SOS)],
+                        self.bot[str(Properties.TP)],
+                        self.bot[str(Properties.SS)],
+                    )[1]
+                )
+                + self.extraBounce
+            )
         self.main()
 
     def setTotalUSDT(self):
         if self.usdt is None:
-            balances = getBalances()
+            client = Client(
+                config.binance_key,
+                config.binance_secret,
+                {"verify": False, "timeout": 20},
+            )
+            balances = getBalances(client)
             bnb = balances[balances["asset"] == "BNB"]["total"].values[0]
+            bnb = bnb * getPrice(client, "BNB")
             if bnb < 10:
                 res = requests.post(
                     config.discordHook,
-                    {
-                        "content": f"""{bnb} BNB left!!!!"""
-                    },
+                    {"content": f"""{bnb} BNB left!!!!"""},
                 )
-                
+
             self.usdt = balances[balances["asset"] == "USDT"]["total"].values[0]
             resp = p3cw.request(
                 entity="deals",
@@ -406,12 +426,16 @@ class Main:
 
             for i in range(len(deals)):
                 deal = deals.loc[i]
-                self.usdt += float(deal['bought_volume']) * (1 + float(deal['take_profit'])/100)
+                self.usdt += float(deal["bought_volume"]) * (
+                    1 + float(deal["take_profit"]) / 100
+                )
 
     def getBotSettingsChangeOnlyOneProperty(self, property):
         usdtPerBot = (self.usdt + self.extraUSDT) / self.numBots
         if property == Properties.SO:
-            for val in (np.arange(self.bot[str(Properties.SO)], self.bot[str(Properties.BO)] * 3, 0.1)):
+            for val in np.arange(
+                self.bot[str(Properties.SO)], self.bot[str(Properties.BO)] * 3, 0.1
+            ):
                 neededUSDT = getNeededUSDTFromSettings(
                     self.bot[str(Properties.BO)],
                     val,
@@ -421,7 +445,6 @@ class Main:
                 if neededUSDT > usdtPerBot:
                     break
         return val
-
 
     def main(self):
         if self.needed:
@@ -451,29 +474,38 @@ class Main:
             return
 
         self.setTotalUSDT()
-        minSafetys = None if self.extraSafetys is None else +self.bot[str(Properties.MSTC)] + self.extraSafetys
+        minSafetys = (
+            None
+            if self.extraSafetys is None
+            else +self.bot[str(Properties.MSTC)] + self.extraSafetys
+        )
 
-        (
-            bo,
-            so,
-            mstc,
-            os,
-            neededUSDT,
-            sos,
-            ss,
-            lowestTPPercent,
-        ) = (
+        (bo, so, mstc, os, neededUSDT, sos, ss, lowestTPPercent) = (
             self.bot[str(Properties.BO)],
             self.bot[str(Properties.SO)],
             self.bot[str(Properties.MSTC)],
             self.bot[str(Properties.OS)],
-            getNeededUSDTFromSettings(self.bot[str(Properties.BO)], self.bot[str(Properties.SO)], self.bot[str(Properties.MSTC)], self.bot[str(Properties.OS)]),
+            getNeededUSDTFromSettings(
+                self.bot[str(Properties.BO)],
+                self.bot[str(Properties.SO)],
+                self.bot[str(Properties.MSTC)],
+                self.bot[str(Properties.OS)],
+            ),
             self.bot[str(Properties.SOS)],
             self.bot[str(Properties.SS)],
-            getBounceFromSettings(self.bot[str(Properties.SO)], self.bot[str(Properties.MSTC)], self.bot[str(Properties.OS)], self.bot[str(Properties.SOS)], self.bot[str(Properties.TP)], self.bot[str(Properties.SS)])[1]
+            getBounceFromSettings(
+                self.bot[str(Properties.SO)],
+                self.bot[str(Properties.MSTC)],
+                self.bot[str(Properties.OS)],
+                self.bot[str(Properties.SOS)],
+                self.bot[str(Properties.TP)],
+                self.bot[str(Properties.SS)],
+            )[1],
         )
         if self.onlySafetyOrder:
             so = self.getBotSettingsChangeOnlyOneProperty(Properties.SO)
+            if so == self.bot[str(Properties.BO)]:
+                bo = 0
         else:
             (
                 bo,
@@ -484,10 +516,12 @@ class Main:
                 sos,
                 ss,
                 lowestTPPercent,
-            ) = getBestBotSettings((self.usdt + self.extraUSDT) / self.numBots, self.bounce, minSafetys)
+            ) = getBestBotSettings(
+                (self.usdt + self.extraUSDT) / self.numBots, self.bounce, minSafetys
+            )
 
         if bo == 0:
-            extra = ''
+            extra = ""
             if self.extraBounce:
                 extra = f" and {self.bounce} bounce"
             print(
@@ -534,13 +568,9 @@ Lowest Take Profit %:      {lowestTPPercent:.2f}"""
         allSame = (
             cmpFloat(bo, self.bot[str(Properties.BO)])
             and cmpFloat(so, self.bot[str(Properties.SO)])
-            and cmpFloat(
-                os, self.bot[str(Properties.OS)]
-            )
+            and cmpFloat(os, self.bot[str(Properties.OS)])
             and mstc == self.bot[str(Properties.MSTC)]
-            and cmpFloat(
-                sos, self.bot[str(Properties.SOS)]
-            )
+            and cmpFloat(sos, self.bot[str(Properties.SOS)])
             and cmpFloat(ss, self.bot[str(Properties.SS)])
         )
         if not self.live or allSame:
