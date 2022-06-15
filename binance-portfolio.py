@@ -120,7 +120,8 @@ def main():
     zeros = np.zeros_like(allSymbols, float)
     portfolio = pd.DataFrame(
         # {key: zeros for key in ["Amount", "USDT"]}, index=allSymbols
-        {key: zeros for key in ["Amount"]}, index=allSymbols
+        {key: zeros for key in ["Amount"]},
+        index=allSymbols,
     )
 
     # # P2P coins
@@ -147,7 +148,7 @@ def main():
     # Balances coins
     balanceSum = 0
     for symbol in portfolio.index:
-        balance = balances.loc[balances["asset"]==symbol]
+        balance = balances.loc[balances["asset"] == symbol]
         if len(balance) == 0:
             continue
         total = balance["total"].values[0]
@@ -172,12 +173,74 @@ def main():
     # portfolio.loc["Profit"] = [balanceSum-p2pSum["USDT"], '']
     portfolio.loc["P2P In"] = p2pSum["USDT"]
     portfolio.loc["Balance"] = balanceSum
-    portfolio.loc["Profit"] = balanceSum-p2pSum["USDT"]
+    portfolio.loc["Profit"] = balanceSum - p2pSum["USDT"]
     fullPrint(portfolio)
-    
+
     json_object = json.dumps(prices, indent=4)
     with open("./portfolio-data/prices.json", "w+") as outfile:
         outfile.write(json_object)
+
+
+def getAllOrders(symbol: str) -> DataFrame:
+    resp = None
+    try:
+        df = pd.read_json(f"./portfolio-data/history/{symbol}.json")
+    except:
+        df = pd.DataFrame()
+    if len(df) == 0:
+        while True:
+            try:
+                resp = client.get_all_orders(symbol=symbol + "USDT", limit=1000)
+            except BinanceAPIException as e:
+                print(e)
+                time.sleep(3)
+                continue
+            break
+        df = pd.DataFrame(resp)
+    while resp is None or len(resp) > 0:
+        while True:
+            try:
+                resp = client.get_all_orders(
+                    symbol=symbol + "USDT", endTime=df.loc[0]["time"] - 1, limit=1000
+                )
+            except BinanceAPIException as e:
+                print(e)
+                time.sleep(3)
+                continue
+            break
+        df = df.append(pd.DataFrame(resp))
+        df.sort_values(by=["time"], inplace=True)
+        df.reset_index(inplace=True, drop=True)
+    if len(df) == 0:
+        return df
+
+    df = df[
+        ["executedQty", "cummulativeQuoteQty", "side", "updateTime", "time", "price"]
+    ]
+    df[["executedQty", "cummulativeQuoteQty", "price"]] = df[
+        ["executedQty", "cummulativeQuoteQty", "price"]
+    ].apply(pd.to_numeric)
+    df = df[df["executedQty"] > 0]
+    df.reset_index(inplace=True, drop=True)
+    df.to_json(f"./portfolio-data/history/{symbol}.json")
+    return df
+
+
+def mainX():
+    # t = client.get_server_time()["serverTime"] // 1000
+    # print(t, datetime.utcfromtimestamp(int(t)))
+    # t = time.time()
+    # print(int(t), datetime.utcfromtimestamp(int(t)))
+
+    orders = getAllOrders("SAND")
+
+    with open("x.csv", "w") as f:
+        for i, order in orders.iterrows():
+            side = order["side"][0] + order["side"][1:].lower()
+            # price = getPriceAtTime("SAND", endTime=order["time"])
+            f.write(
+                f"{side},{order['price']},{order['executedQty']},{order['cummulativeQuoteQty']}\n"
+            )
 
 
 if __name__ == "__main__":
